@@ -55,6 +55,7 @@ const state = {
   prefRadius: "5 km",
   pfWorkStyles: ["flexible","evening","teamwork"],
   pfInterests: ["Yeme-İçme","Perakende","Hizmet"],
+  nfTab: 0,
 };
 
 /* ─── DATA ───────────────────────────────────────────────────────── */
@@ -1533,32 +1534,254 @@ function renderMatch() {
     </div>`);
 }
 
-/* NOTIFICATIONS */
-const _staticNotifs = [
-  { icon:"✦", bg:"var(--primary-dim)", title:"Yeni Eşleşme",         body:"Cafe Lumiere seni beğendi!", time:"Az önce", unread:true,  action:"messages" },
-  { icon:"◎", bg:"var(--success-dim)", title:"Mesaj",                  body:"Beyaz Masa: 'Yarın müsait misiniz?'", time:"10 dk", unread:true, action:"chat" },
-  { icon:"▤", bg:"var(--warning-dim)", title:"Görüşme Hatırlatması",   body:"Teknomarket görüşmen yarın 14:00'te", time:"1 saat", unread:false, action:"interview" },
-  { icon:"⊙", bg:"var(--surface-3)",   title:"Profil Güncelleme",      body:"Profilin tamamlanma oranı %72'de", time:"Dün", unread:false, action:"settings-profile" },
-  { icon:"↗", bg:"var(--primary-dim)", title:"Yeni İlanlar",           body:"Bölgene 5 yeni ilan eklendi", time:"Dün", unread:false, action:"nearby" },
+/* ─── NOTIFICATIONS v2 ─── */
+const NF_FEED = [
+  { id:"nf1", type:"match",
+    company:"Cafe Lumiere", initials:"CL", hue:"108,78,255",
+    role:"Barista", score:92, dist:1.2,
+    title:"Yeni Eşleşme!",
+    body:"Cafe Lumiere, Barista pozisyonu için seni seçti.",
+    time:"Az önce", group:"today", unread:true, action:"chat" },
+
+  { id:"nf2", type:"message",
+    company:"Beyaz Masa", initials:"BM", hue:"28,111,215",
+    title:"Yeni Mesaj",
+    body:"\"Yarın sabah müsait misiniz? Sizi bekliyoruz.\"",
+    time:"12 dk", group:"today", unread:true, action:"chat" },
+
+  { id:"nf3", type:"interview",
+    company:"Teknomarket", initials:"TM", hue:"245,158,11",
+    title:"Görüşme Yarın!", detail:"Video Görüşme · 17 Haziran · 14:00",
+    body:"Görüşmeye hazır ol — yarın saat 14:00'te başlıyor.",
+    time:"1 saat", group:"today", unread:true, action:"interview" },
+
+  { id:"nf4", type:"opportunity",
+    title:"8 Yeni Fırsat Yakında",
+    body:"Kadıköy bölgesinde sana uygun 8 yeni ilan eklendi.",
+    time:"3 saat", group:"today", unread:false, action:"discover" },
+
+  { id:"nf5", type:"profile",
+    title:"3 İşveren Profilini İnceledi",
+    body:"Bu hafta 3 farklı işveren profilinde zaman geçirdi.",
+    time:"Dün", group:"yesterday", unread:false, action:"profile" },
+
+  { id:"nf6", type:"tip",
+    title:"Akıllı Öneri",
+    body:"2 yetenek daha ekle — benzer profiller %30 daha fazla eşleşiyor.",
+    time:"Dün", group:"yesterday", unread:false, action:"settings-profile" },
+
+  { id:"nf7", type:"match",
+    company:"Lezzet Durağı", initials:"LD", hue:"34,197,94",
+    role:"Garson", score:78, dist:0.6,
+    title:"Yeni Eşleşme",
+    body:"Lezzet Durağı, Garson pozisyonu için seni seçti.",
+    time:"2 gün önce", group:"week", unread:false, action:"chat" },
+
+  { id:"nf8", type:"opportunity",
+    title:"Haftalık Fırsat Özeti",
+    body:"Bu hafta 14 yeni fırsat eklendi. En yüksek uyum: %92.",
+    time:"3 gün önce", group:"week", unread:false, action:"discover" },
 ];
 
-function renderNotifications() {
-  const notifs = state.notifications.length ? state.notifications : _staticNotifs;
-  return screen(`
-    ${topbar("Bildirimler", "home",
-      `<button class="topbar-action" style="font-size:12px;font-weight:700;color:var(--primary);width:auto;padding:0 8px" onclick="markAllRead()">Tümünü Oku</button>`)}
-    <div class="screen-body">
-      ${notifs.map((n,i) => `
-        <div class="notif-item${n.unread ? " unread" : ""}" id="notif-${i}" onclick="go('${n.action || 'home'}');markNotifRead(${i})">
-          <div class="notif-icon" style="background:${n.bg}">${n.icon}</div>
-          <div class="notif-body">
-            <h3>${n.title}</h3>
-            <p>${n.body}</p>
-          </div>
-          <span class="notif-time">${n.time}</span>
-        </div>`).join("")}
-    </div>`, bottomNav(""));
+const NF_TYPE_META = {
+  match:       { icon:"✦", bg:"rgba(108,78,255,.14)", label:"Eşleşme"  },
+  message:     { icon:"💬", bg:"rgba(34,197,94,.12)",  label:"Mesaj"    },
+  interview:   { icon:"📅", bg:"rgba(245,158,11,.14)", label:"Görüşme"  },
+  opportunity: { icon:"📍", bg:"rgba(28,111,215,.12)", label:"Fırsatlar" },
+  profile:     { icon:"👁", bg:"var(--surface-3)",     label:"Profil"   },
+  tip:         { icon:"💡", bg:"var(--primary-dim)",   label:"Öneri"    },
+};
+
+function nfUnreadCount() {
+  return NF_FEED.filter(n => n.unread).length;
 }
+
+/* ── Digest card (Activity tab top) ── */
+function nfDigestCardHtml() {
+  return `
+    <div class="nf-digest" onclick="go('discover')">
+      <div class="nf-digest-hd">
+        <span class="nf-digest-loc">📍 Kadıköy · Bugün</span>
+        <span class="nf-digest-tag">Günlük Özet</span>
+      </div>
+      <div class="nf-digest-stats">
+        <div class="nf-ds-col">
+          <span class="nf-ds-num">8</span>
+          <span class="nf-ds-lbl">Yeni İlan</span>
+        </div>
+        <div class="nf-ds-div"></div>
+        <div class="nf-ds-col">
+          <span class="nf-ds-num" style="color:#22c55e">3</span>
+          <span class="nf-ds-lbl">Yüksek Uyum</span>
+        </div>
+        <div class="nf-ds-div"></div>
+        <div class="nf-ds-col">
+          <span class="nf-ds-num" style="color:#1c6fd7">0.8</span>
+          <span class="nf-ds-lbl">En Yakın km</span>
+        </div>
+      </div>
+      <button class="nf-digest-cta">🔍 Bugün Keşfet →</button>
+    </div>`;
+}
+
+/* ── Per-type card renderers ── */
+function nfMatchCard(n, i) {
+  const meta = NF_TYPE_META.match;
+  return `
+    <div class="nf-item nf-item-match${n.unread ? " nf-unread" : ""}" id="nf-${i}"
+         onclick="go('${n.action}');markNotifRead('${n.id}')">
+      <div class="nf-match-head">
+        <div class="nf-av" style="background:rgba(${n.hue},.15);color:rgba(${n.hue},1)">
+          ${n.initials}
+        </div>
+        <div class="nf-match-info">
+          <span class="nf-type-tag" style="background:${meta.bg};color:rgba(${n.hue},1)">
+            ${meta.icon} ${meta.label}
+          </span>
+          <div class="nf-match-name">${n.company}</div>
+          <div class="nf-match-role">${n.role} · ${n.score}% · ${n.dist} km</div>
+        </div>
+        <span class="nf-time${n.unread ? " nf-time-new" : ""}">${n.time}</span>
+      </div>
+      <p class="nf-match-body">${n.body}</p>
+      <button class="nf-cta" onclick="event.stopPropagation();go('chat')">
+        💬 Mesaj Gönder
+      </button>
+    </div>`;
+}
+
+function nfMessageCard(n, i) {
+  const meta = NF_TYPE_META.message;
+  return `
+    <div class="nf-item nf-item-msg${n.unread ? " nf-unread" : ""}" id="nf-${i}"
+         onclick="go('${n.action}');markNotifRead('${n.id}')">
+      <div class="nf-row">
+        <div class="nf-icon" style="background:${meta.bg}">${meta.icon}</div>
+        <div class="nf-body">
+          <div class="nf-title-row">
+            <span class="nf-title">${n.title}</span>
+            ${n.unread ? '<span class="nf-dot"></span>' : ""}
+          </div>
+          <span class="nf-company">${n.company}</span>
+          <p class="nf-preview">${n.body}</p>
+        </div>
+        <span class="nf-time">${n.time}</span>
+      </div>
+    </div>`;
+}
+
+function nfInterviewCard(n, i) {
+  return `
+    <div class="nf-item nf-item-iv${n.unread ? " nf-unread" : ""}" id="nf-${i}"
+         onclick="go('${n.action}');markNotifRead('${n.id}')">
+      <div class="nf-row">
+        <div class="nf-icon nf-icon-iv">📅</div>
+        <div class="nf-body">
+          <div class="nf-title-row">
+            <span class="nf-title">${n.title}</span>
+            ${n.unread ? '<span class="nf-dot nf-dot-iv"></span>' : ""}
+          </div>
+          <span class="nf-iv-detail">${n.detail}</span>
+          <p class="nf-preview">${n.body}</p>
+        </div>
+        <span class="nf-time">${n.time}</span>
+      </div>
+      <button class="nf-cta nf-cta-iv" onclick="event.stopPropagation();go('interview')">
+        📋 Görüşme Detayları
+      </button>
+    </div>`;
+}
+
+function nfStandardCard(n, i) {
+  const meta = NF_TYPE_META[n.type] || NF_TYPE_META.tip;
+  return `
+    <div class="nf-item${n.unread ? " nf-unread" : ""}" id="nf-${i}"
+         onclick="go('${n.action}');markNotifRead('${n.id}')">
+      <div class="nf-row">
+        <div class="nf-icon" style="background:${meta.bg}">${meta.icon}</div>
+        <div class="nf-body">
+          <div class="nf-title-row">
+            <span class="nf-title">${n.title}</span>
+            ${n.unread ? '<span class="nf-dot"></span>' : ""}
+          </div>
+          <p class="nf-preview">${n.body}</p>
+        </div>
+        <span class="nf-time">${n.time}</span>
+      </div>
+    </div>`;
+}
+
+function nfItemHtml(n, i) {
+  if (n.type === "match")     return nfMatchCard(n, i);
+  if (n.type === "message")   return nfMessageCard(n, i);
+  if (n.type === "interview") return nfInterviewCard(n, i);
+  return nfStandardCard(n, i);
+}
+
+function nfGroupHtml(label, items) {
+  if (!items.length) return "";
+  return `
+    <div class="nf-group-hdr">${label}</div>
+    ${items.map((n, i) => nfItemHtml(n, NF_FEED.indexOf(n))).join("")}`;
+}
+
+function nfBodyContent(tab) {
+  if (tab === 1) {
+    return nfDigestCardHtml() +
+      NF_FEED.map((n, i) => nfItemHtml(n, i)).join("");
+  }
+  const today     = NF_FEED.filter(n => n.group === "today");
+  const yesterday = NF_FEED.filter(n => n.group === "yesterday");
+  const week      = NF_FEED.filter(n => n.group === "week");
+  return nfGroupHtml("Bugün", today) +
+    nfGroupHtml("Dün", yesterday) +
+    nfGroupHtml("Bu Hafta", week);
+}
+
+function setNFTab(tab) {
+  state.nfTab = tab;
+  const body = document.getElementById("nf-body");
+  if (body) body.innerHTML = nfBodyContent(tab);
+  document.querySelectorAll(".nf-tab").forEach((b, i) =>
+    b.classList.toggle("nf-tab-on", i === tab));
+}
+
+function renderNotifications() {
+  const unread = nfUnreadCount();
+  return screen(`
+    <div class="nf-header">
+      <div class="nf-header-top">
+        <h1 class="nf-header-title">Bildirimler</h1>
+        <button class="nf-read-all" onclick="markAllRead()">Tümünü Oku</button>
+      </div>
+      <div class="nf-tabs">
+        <button class="nf-tab nf-tab-on" onclick="setNFTab(0)">
+          Bildirimler
+          ${unread > 0 ? `<span class="nf-tab-badge">${unread}</span>` : ""}
+        </button>
+        <button class="nf-tab" onclick="setNFTab(1)">Aktivite</button>
+      </div>
+    </div>
+    <div class="nf-body" id="nf-body">
+      ${nfBodyContent(state.nfTab)}
+    </div>
+  `, bottomNav(""));
+}
+
+function markAllRead() {
+  NF_FEED.forEach(n => { n.unread = false; });
+  document.querySelectorAll(".nf-unread").forEach(el => el.classList.remove("nf-unread"));
+  document.querySelectorAll(".nf-dot").forEach(el => el.remove());
+  document.querySelectorAll(".nf-tab-badge").forEach(el => el.remove());
+  document.querySelectorAll(".nf-time-new").forEach(el => el.classList.remove("nf-time-new"));
+}
+
+function markNotifRead(id) {
+  const n = NF_FEED.find(x => x.id === id);
+  if (n) n.unread = false;
+}
+
+function markNFRead(id) { markNotifRead(id); }
 
 /* MATCHES */
 /* ── MATCH CENTER HELPERS ──────────────────────────────────────── */
@@ -3919,16 +4142,6 @@ function addSkill() {
   if (name?.trim()) { user.skills.push(name.trim()); render(); }
 }
 
-function markAllRead() {
-  state.notifications = (state.notifications.length ? state.notifications : _staticNotifs).map(n => ({...n, unread:false}));
-  document.querySelectorAll(".notif-item.unread").forEach(el => el.classList.remove("unread"));
-}
-
-function markNotifRead(i) {
-  if (state.notifications[i]) state.notifications[i].unread = false;
-  else if (_staticNotifs[i])  _staticNotifs[i].unread = false;
-}
-
 function toggleNotifPref(key) {
   state.notifPrefs[key] = !state.notifPrefs[key];
   render();
@@ -4150,6 +4363,7 @@ Object.assign(window, {
   sendQuickReply, toggleChatAttach, shareLocation, shareDocument, shareProfile,
   proposeInterview, acceptInterview, declineInterview,
   openInterview, refreshLocation, togglePfStyle, togglePfInterest,
+  setNFTab, markNFRead,
   formatAuthPhone, submitAuthPhone, onRegOtpInput, onRegOtpKey,
   onRegNameInput, updateRegAvatar, cycleAvatarColor,
   toggleRegSkill, goToRegisterLocation, selectRegCity, selectRegDistrict,

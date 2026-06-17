@@ -2335,22 +2335,154 @@ img { display:block; max-width:100%; }
 }
 .toggle.on .toggle-knob { transform:translateX(20px); }
 
-/* ─── NOTIFICATIONS ──────────────────────────────────────────────── */
-.notif-item {
-  display:flex; gap:12px; padding:14px 18px;
+/* ─── NOTIFICATIONS v2 ──────────────────────────────────────────── */
+
+/* Header */
+.nf-header {
+  flex-shrink:0; padding:16px 18px 0;
+  background:var(--bg); border-bottom:.5px solid var(--border);
+}
+.nf-header-top {
+  display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;
+}
+.nf-header-title { font-size:22px; font-weight:900; letter-spacing:-.3px; }
+.nf-read-all {
+  font-size:12px; font-weight:700; color:var(--primary);
+  background:none; border:none; cursor:pointer; padding:0;
+}
+
+/* Tabs */
+.nf-tabs { display:flex; gap:0; }
+.nf-tab {
+  flex:1; padding:12px 0; font-size:13px; font-weight:600;
+  color:var(--text-3); background:none; border:none;
+  border-bottom:2px solid transparent; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  transition:color .15s, border-color .15s;
+}
+.nf-tab.nf-tab-on { color:var(--primary); border-bottom-color:var(--primary); }
+.nf-tab-badge {
+  min-width:18px; height:18px; border-radius:100px; padding:0 5px;
+  background:var(--primary); color:#fff; font-size:10px; font-weight:800;
+  display:flex; align-items:center; justify-content:center;
+}
+
+/* Scrollable body */
+.nf-body { flex:1; overflow-y:auto; padding-bottom:calc(var(--nav-h,60px) + 24px); }
+
+/* Group headers */
+.nf-group-hdr {
+  padding:10px 18px 6px;
+  font-size:11px; font-weight:700; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.8px;
+  background:var(--bg); position:sticky; top:0; z-index:1;
+}
+
+/* Base notification item */
+.nf-item {
   border-bottom:.5px solid var(--border);
   cursor:pointer; transition:background .15s;
 }
-.notif-item:hover { background:var(--surface); }
-.notif-item.unread { background:rgba(108,78,255,.04); }
-.notif-icon {
-  width:44px; height:44px; border-radius:var(--r-sm); flex-shrink:0;
+.nf-item:hover { background:var(--surface); }
+.nf-item.nf-unread { background:rgba(108,78,255,.035); }
+
+/* Standard row layout */
+.nf-row {
+  display:flex; gap:12px; align-items:flex-start; padding:14px 18px;
+}
+.nf-icon {
+  width:42px; height:42px; border-radius:12px; flex-shrink:0;
   display:flex; align-items:center; justify-content:center; font-size:18px;
 }
-.notif-body { flex:1; }
-.notif-body h3 { font-size:14px; font-weight:600; margin-bottom:2px; }
-.notif-body p { font-size:13px; color:var(--text-2); line-height:1.4; }
-.notif-time { font-size:11px; color:var(--text-3); flex-shrink:0; margin-top:2px; }
+.nf-icon-iv { background:rgba(245,158,11,.14); }
+.nf-body { flex:1; min-width:0; }
+.nf-title-row { display:flex; align-items:center; gap:6px; margin-bottom:2px; }
+.nf-title { font-size:13px; font-weight:700; color:var(--text-1); }
+.nf-dot {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--primary); flex-shrink:0;
+}
+.nf-dot-iv { background:#f59e0b; }
+.nf-company { font-size:11px; font-weight:600; color:var(--primary); margin-bottom:3px; display:block; }
+.nf-preview { font-size:12px; color:var(--text-2); line-height:1.45; margin:0; }
+.nf-iv-detail { font-size:11px; font-weight:700; color:#f59e0b; display:block; margin-bottom:3px; }
+.nf-time {
+  font-size:11px; color:var(--text-3); flex-shrink:0; white-space:nowrap;
+  padding-top:2px;
+}
+.nf-time-new { color:var(--primary); font-weight:700; }
+
+/* CTA button inside item */
+.nf-cta {
+  display:block; margin:0 18px 14px; padding:9px 14px;
+  border-radius:10px; border:none; cursor:pointer;
+  background:var(--primary); color:#fff;
+  font-size:12px; font-weight:700;
+  transition:opacity .15s;
+}
+.nf-cta:hover { opacity:.88; }
+.nf-cta-iv { background:rgba(245,158,11,.12); color:#f59e0b; border:.5px solid rgba(245,158,11,.3); }
+
+/* Match card — elevated */
+.nf-item-match { }
+.nf-match-head {
+  display:flex; gap:12px; align-items:flex-start; padding:14px 18px 0;
+}
+.nf-av {
+  width:46px; height:46px; border-radius:14px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:16px; font-weight:900;
+}
+.nf-match-info { flex:1; }
+.nf-type-tag {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.5px;
+  padding:2px 8px; border-radius:100px; margin-bottom:4px;
+}
+.nf-match-name { font-size:15px; font-weight:800; color:var(--text-1); margin-bottom:1px; }
+.nf-match-role { font-size:12px; color:var(--text-2); }
+.nf-match-body {
+  font-size:13px; color:var(--text-2); line-height:1.4;
+  padding:10px 18px 0; margin:0;
+}
+.nf-item-msg .nf-row { border-left:none; }
+
+/* Interview item left accent */
+.nf-item-iv { border-left:2.5px solid #f59e0b; }
+.nf-item-iv.nf-unread { background:rgba(245,158,11,.04); }
+
+/* ── Daily Digest Card ── */
+.nf-digest {
+  margin:14px 18px; border-radius:16px; overflow:hidden;
+  background:linear-gradient(135deg,rgba(108,78,255,.14) 0%,rgba(28,111,215,.1) 100%);
+  border:.5px solid rgba(108,78,255,.2); cursor:pointer;
+}
+.nf-digest-hd {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 16px 10px;
+}
+.nf-digest-loc { font-size:13px; font-weight:700; color:var(--text-1); }
+.nf-digest-tag {
+  font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.6px;
+  color:var(--primary); background:var(--primary-dim);
+  padding:2px 8px; border-radius:100px;
+}
+.nf-digest-stats {
+  display:flex; align-items:center;
+  padding:0 16px 14px;
+}
+.nf-ds-col {
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+}
+.nf-ds-num { font-size:28px; font-weight:900; line-height:1; color:var(--primary); }
+.nf-ds-lbl { font-size:11px; color:var(--text-2); font-weight:600; }
+.nf-ds-div { width:1px; height:36px; background:var(--border); margin:0 8px; }
+.nf-digest-cta {
+  display:block; width:100%; padding:12px 16px;
+  background:rgba(108,78,255,.12); border:none; border-top:.5px solid rgba(108,78,255,.15);
+  font-size:13px; font-weight:700; color:var(--primary);
+  cursor:pointer; text-align:left;
+}
 
 /* ─── INTERVIEW ──────────────────────────────────────────────────── */
 .interview-card {
