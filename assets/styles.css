@@ -1180,59 +1180,197 @@ img { display:block; max-width:100%; }
 .discover-layout { display:flex; flex-direction:column; flex:1; overflow:hidden; }
 
 /* ─── JOB DETAIL ─────────────────────────────────────────────────── */
-.detail-hero {
-  height:220px; position:relative; overflow:hidden; flex-shrink:0;
+/* ─── JOB DETAIL v2 ─────────────────────────────────────────── */
+
+/* Hero */
+.jd-hero {
+  height:270px; position:relative; overflow:hidden; flex-shrink:0;
+  display:flex; flex-direction:column; justify-content:flex-end;
+}
+.jd-nav-btn {
+  position:absolute; top:16px;
+  width:38px; height:38px; border-radius:50%;
+  background:rgba(0,0,0,.45); backdrop-filter:blur(10px);
+  border:.5px solid rgba(255,255,255,.2);
+  color:#fff; font-size:18px; line-height:1;
   display:flex; align-items:center; justify-content:center;
+  cursor:pointer; z-index:2;
 }
-.detail-hero .big-initials {
-  font-size:80px; font-weight:900; color:rgba(255,255,255,.12); letter-spacing:-2px;
+.jd-back { left:16px; }
+.jd-save { right:16px; }
+
+/* Match ring */
+.jd-ring-wrap {
+  position:absolute; top:22px; left:50%; transform:translateX(-50%);
+  width:88px; height:88px;
 }
-.detail-hero-back {
-  position:absolute; top:16px; left:16px;
-  width:36px; height:36px; border-radius:50%;
+.jd-ring-svg { width:88px; height:88px; transform:rotate(-90deg); position:absolute; inset:0; }
+.jd-ring-bg  { fill:none; stroke:rgba(255,255,255,.18); stroke-width:4.5; }
+.jd-ring-arc {
+  fill:none; stroke-width:4.5; stroke-linecap:round;
+  stroke-dasharray:226; stroke-dashoffset:226;
+  animation:jd-ring-draw 1.1s cubic-bezier(.34,1.1,.64,1) .25s forwards;
+}
+@keyframes jd-ring-draw { to { stroke-dashoffset:var(--offset,0); } }
+.jd-hero-init {
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:26px; font-weight:900; color:rgba(255,255,255,.92); letter-spacing:-1px;
+}
+.jd-hero-score {
+  position:absolute; bottom:-3px; left:50%; transform:translateX(-50%);
+  font-size:11px; font-weight:900;
   background:rgba(0,0,0,.45); backdrop-filter:blur(8px);
-  display:flex; align-items:center; justify-content:center;
-  color:#fff; font-size:16px; cursor:pointer;
-  border:.5px solid rgba(255,255,255,.15);
+  padding:2px 9px; border-radius:8px; white-space:nowrap;
 }
-.detail-hero-save {
-  position:absolute; top:16px; right:16px;
-  width:36px; height:36px; border-radius:50%;
-  background:rgba(0,0,0,.45); backdrop-filter:blur(8px);
-  display:flex; align-items:center; justify-content:center;
-  color:#fff; font-size:16px; cursor:pointer;
-  border:.5px solid rgba(255,255,255,.15);
+
+/* Hero footer */
+.jd-hero-foot {
+  position:relative; z-index:1; padding:0 20px 18px;
+  background:linear-gradient(to top, rgba(0,0,0,.65) 0%, transparent 100%);
 }
-.detail-score-badge {
-  position:absolute; bottom:14px; right:14px;
-  background:rgba(0,0,0,.5); backdrop-filter:blur(10px);
-  padding:6px 12px; border-radius:12px;
-  font-size:13px; font-weight:800; color:#22C55E;
-  border:.5px solid rgba(34,197,94,.3);
+.jd-hero-title   { font-size:24px; font-weight:900; color:#fff; margin-bottom:2px; }
+.jd-hero-company { font-size:13px; color:rgba(255,255,255,.72); margin-bottom:10px; }
+.jd-hero-pills   { display:flex; gap:6px; flex-wrap:wrap; }
+.jd-hpill {
+  background:rgba(255,255,255,.16); backdrop-filter:blur(8px);
+  border:.5px solid rgba(255,255,255,.28); border-radius:20px;
+  color:#fff; font-size:11px; font-weight:700; padding:4px 10px;
 }
-.detail-body { padding:18px; overflow-y:auto; flex:1; }
-.detail-head { margin-bottom:16px; }
-.detail-head h1 { font-size:22px; font-weight:800; margin-bottom:4px; }
-.detail-head .company { font-size:14px; color:var(--text-2); margin-bottom:12px; }
-.detail-kpis { display:flex; gap:8px; }
-.detail-kpi {
-  display:flex; flex-direction:column; align-items:center; gap:2px;
+
+/* Body */
+.jd-body { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:4px; }
+
+/* Card */
+.jd-card {
+  margin:0 14px 10px;
   background:var(--surface); border:.5px solid var(--border);
-  padding:10px 8px; border-radius:var(--r-sm); flex:1;
+  border-radius:var(--r); padding:16px;
 }
-.detail-kpi .kpi-v { font-size:13px; font-weight:800; }
-.detail-kpi .kpi-l { font-size:9px; color:var(--text-3); text-align:center; line-height:1.3; }
-.detail-section { margin-top:18px; }
-.detail-section h3 { font-size:12px; font-weight:700; color:var(--text-2);
-  text-transform:uppercase; letter-spacing:.8px; margin-bottom:10px; }
-.detail-section p { font-size:14px; color:var(--text-2); line-height:1.6; }
-.detail-list { display:flex; flex-direction:column; gap:6px; list-style:none; }
-.detail-list li { display:flex; align-items:flex-start; gap:8px;
-  font-size:14px; color:var(--text-2); }
-.detail-list li::before { content:"✓"; color:var(--success); font-weight:700; flex-shrink:0; }
-.detail-ctas {
-  display:flex; gap:10px; padding:14px 18px 24px; flex-shrink:0;
-  border-top:.5px solid var(--border);
+
+/* Section header */
+.jd-sec-hdr {
+  padding:14px 14px 6px;
+  font-size:10px; font-weight:800; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.9px;
+}
+
+/* Match explanation */
+.jd-match-card { display:flex; gap:16px; align-items:flex-start; }
+.jd-match-left { flex-shrink:0; text-align:center; padding-top:2px; }
+.jd-score-big  { font-size:48px; font-weight:900; line-height:1; }
+.jd-score-big span { font-size:22px; }
+.jd-score-lbl  { font-size:10px; font-weight:700; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.5px; margin-top:4px; }
+.jd-match-right { flex:1; display:flex; flex-direction:column; gap:9px; padding-top:4px; }
+.jd-mr {
+  font-size:13px; color:var(--text-2); display:flex; align-items:flex-start;
+  gap:7px; font-weight:500;
+}
+.jd-mr::before { content:"✓"; color:var(--success); font-weight:800; flex-shrink:0; }
+
+/* Travel */
+.jd-travel-row { display:flex; gap:8px; margin-bottom:14px; }
+.jd-tm {
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:10px 6px; border-radius:var(--r-sm);
+  background:var(--bg); border:.5px solid var(--border);
+  font-size:13px; font-weight:700; color:var(--text-2); cursor:pointer;
+  transition:all .15s;
+}
+.jd-tm span { font-size:10px; font-weight:500; color:var(--text-3); }
+.jd-tm-on { background:rgba(108,78,255,.1); border-color:#6C4EFF; color:#6C4EFF; }
+.jd-tm-on span { color:#6C4EFF; }
+.jd-dist-bar { height:5px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:10px; }
+.jd-dist-fill { height:100%; background:var(--primary); border-radius:3px; transition:width .4s ease; }
+.jd-dist-note { font-size:12px; color:var(--text-3); text-align:center; }
+
+/* Salary */
+.jd-sal-card { text-align:center; }
+.jd-sal-range {
+  font-size:32px; font-weight:900; color:var(--success);
+  margin-bottom:6px; line-height:1;
+}
+.jd-sal-cur   { font-size:20px; }
+.jd-sal-dash  { color:var(--text-3); }
+.jd-sal-per   { font-size:14px; font-weight:500; color:var(--text-3); }
+.jd-sal-tag   { font-size:12px; font-weight:700; color:var(--success); }
+
+/* Schedule */
+.jd-sched-card { text-align:center; }
+.jd-days       { display:flex; gap:5px; justify-content:center; margin-bottom:14px; }
+.jd-day {
+  width:34px; height:34px; border-radius:50%; font-size:10px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--bg); border:.5px solid var(--border); color:var(--text-3);
+}
+.jd-day-on { background:var(--primary); border-color:var(--primary); color:#fff; }
+.jd-sched-row { display:flex; justify-content:center; align-items:center; gap:12px; margin-bottom:12px; }
+.jd-sched-time { font-size:16px; font-weight:800; color:var(--text); }
+.jd-sched-hrs  { font-size:12px; color:var(--text-3); }
+.jd-type-pill {
+  display:inline-block; background:rgba(108,78,255,.1); color:#6C4EFF;
+  border:.5px solid rgba(108,78,255,.3); border-radius:20px;
+  padding:4px 14px; font-size:11px; font-weight:700;
+}
+
+/* Company */
+.jd-co-row { display:flex; gap:12px; align-items:center; margin-bottom:12px; }
+.jd-co-init {
+  width:44px; height:44px; border-radius:var(--r-sm); flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:900;
+}
+.jd-co-info { flex:1; }
+.jd-co-name { font-size:15px; font-weight:800; margin-bottom:2px; }
+.jd-co-meta { font-size:11px; color:var(--text-3); }
+.jd-verified {
+  font-size:10px; font-weight:800; color:var(--success);
+  background:rgba(34,197,94,.1); border:.5px solid rgba(34,197,94,.25);
+  padding:3px 8px; border-radius:10px; white-space:nowrap;
+}
+.jd-co-desc { font-size:13px; color:var(--text-2); line-height:1.65; }
+
+/* Requirements */
+.jd-reqs    { display:flex; flex-direction:column; gap:12px; }
+.jd-req     { display:flex; gap:10px; align-items:flex-start; }
+.jd-req-ic  {
+  width:20px; height:20px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; font-weight:800; margin-top:1px;
+}
+.jd-req-yes .jd-req-ic  { background:rgba(34,197,94,.15); color:var(--success); }
+.jd-req-open .jd-req-ic { background:var(--bg); color:var(--text-3); border:.5px solid var(--border); }
+.jd-req-name  { font-size:13px; font-weight:700; display:block; margin-bottom:2px; }
+.jd-req-tag   { display:inline-block; font-size:10px; font-weight:700; padding:1px 7px; border-radius:6px; }
+.jd-rtag-yes  { background:rgba(34,197,94,.1); color:var(--success); }
+.jd-rtag-open { background:var(--bg); color:var(--text-3); border:.5px solid var(--border); }
+
+/* Benefits */
+.jd-benefits { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.jd-benefit  {
+  display:flex; align-items:center; gap:8px;
+  background:var(--bg); border:.5px solid var(--border);
+  border-radius:var(--r-sm); padding:10px 12px;
+  font-size:12px; font-weight:700;
+}
+.jd-bic { font-size:16px; }
+
+/* Sticky CTA */
+.jd-cta-bar {
+  display:flex; gap:10px; padding:14px 16px 28px; flex-shrink:0;
+  border-top:.5px solid var(--border); background:var(--bg);
+}
+.jd-cta-sec {
+  flex:1; padding:14px; border-radius:var(--r);
+  background:var(--surface); border:.5px solid var(--border);
+  font-size:13px; font-weight:700; cursor:pointer; color:var(--text);
+}
+.jd-cta-pri {
+  flex:2; padding:14px; border-radius:var(--r);
+  background:var(--primary); color:#fff;
+  font-size:15px; font-weight:800; cursor:pointer; border:none;
+  box-shadow:var(--primary-glow);
 }
 
 /* ─── MATCHES SCREEN ─────────────────────────────────────────────── */

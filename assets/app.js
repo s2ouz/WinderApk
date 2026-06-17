@@ -1251,76 +1251,217 @@ function openJob(id, source) {
   go("job-detail");
 }
 
-function renderJobDetail() {
+/* ── JOB DETAIL HELPERS ──────────────────────────────────────── */
+const JD_DAY_LABELS = ["Pt","Sa","Ça","Pe","Cu","Ct","Pz"];
+
+function scheduleActiveDays(schedule) {
+  const s = schedule.toLowerCase();
+  if (s.includes("7 gün") || s.includes("esnek")) return [true,true,true,true,true,true,true];
+  if (s.includes("hafta içi") || s.includes("haftaiçi")) return [true,true,true,true,true,false,false];
+  if (s.includes("cumartesi") && (s.includes("pazar") || s.includes("–pazar"))) return [false,false,false,false,false,true,true];
+  if (s.includes("cumartesi")) return [false,false,false,false,false,true,false];
+  if (s.includes("pazar")) return [false,false,false,false,false,false,true];
+  return [true,true,true,true,true,false,false];
+}
+
+function scheduleTimeStr(schedule) {
+  const m = schedule.match(/(\d{1,2}:\d{2})\s*[–\-]\s*(\d{1,2}:\d{2})/);
+  return m ? `${m[1]} – ${m[2]}` : "Esnek saatler";
+}
+
+function scheduleHours(schedule) {
+  const m = schedule.match(/(\d{1,2}):\d{2}\s*[–\-]\s*(\d{1,2}):\d{2}/);
+  if (!m) return "";
+  const h = parseInt(m[2]) - parseInt(m[1]);
+  return h > 0 ? `${h} saat/gün` : "";
+}
+
+function getMatchReasons(job) {
+  const reasons = [];
+  reasons.push(job.distance < 2 ? "Konumuna yürüme mesafesinde" : `Yalnızca ${job.distance} km uzakta`);
+  reasons.push(job.matchScore >= 85 ? "Beceri profilin mükemmel uyum sağlıyor" : "Temel becerilerin bu role uyuyor");
+  reasons.push(job.sal.min >= 480 ? "Ücret beklentini karşılıyor" : "Prim sistemiyle beklenti aşılabilir");
+  const sched = job.schedule.toLowerCase();
+  const dayHit = sched.includes("cumartesi") || sched.includes("esnek") || sched.includes("sonu");
+  reasons.push(dayHit ? "Hafta sonu müsaitliğin var" : "Çalışma saatin bu ilanla uyuşuyor");
+  return reasons;
+}
+
+function reqMatchesUser(req) {
+  const r = req.toLowerCase();
+  return user.skills.some(s =>
+    s.toLowerCase().split(/[\s,]+/).some(w => w.length > 3 && r.includes(w))
+  );
+}
+
+const JD_BENEFIT_ICONS = {
+  "yemek ikramı":"🍽","servis ikramı":"💰","prim sistemi":"📈",
+  "ulaşım desteği":"🚌","esnek saat":"⏰","yakıt desteği":"⛽",
+  "hızlı ödeme":"💸","çalışan indirimi":"🏷","sgk":"🏥","yemek kartı":"💳",
+};
+function benefitIcon(b) { return JD_BENEFIT_ICONS[b.toLowerCase()] || "✦"; }
+
+function jdScoreColor(s) { return s >= 90 ? "#22c55e" : s >= 70 ? "#6C4EFF" : "#f59e0b"; }
+
+function setDetailMode(mode, btn) {
   const job = jobs.find(j => String(j.id) === String(state.detailJobId)) || jobs[0];
-  const backRoute = state.detailSource === "discover" ? "discover" :
-                   state.detailSource === "nearby" ? "nearby" : "home";
-  const grad = `linear-gradient(135deg,rgba(${job.hue},.5) 0%,rgba(${job.hue},.15) 50%,var(--bg) 100%)`;
+  document.querySelectorAll(".jd-tm").forEach(b => b.classList.remove("jd-tm-on"));
+  btn.classList.add("jd-tm-on");
+  const fill = document.getElementById("jd-dist-fill");
+  const note = document.getElementById("jd-dist-note");
+  const cfg = {
+    walk:{ pct: Math.min(95, (job.travel.walk / 45) * 100), note:`${job.distance} km · Yürüyerek ${job.travel.walk} dakika` },
+    bus: { pct: Math.min(95, (job.travel.bus  / 30) * 100), note:`${job.distance} km · Otobüsle ${job.travel.bus} dakika` },
+    car: { pct: Math.min(95, (job.travel.car  / 20) * 100), note:`${job.distance} km · Arabayla ${job.travel.car} dakika` },
+  };
+  const c = cfg[mode];
+  if (fill) fill.style.width = c.pct + "%";
+  if (note) note.textContent = c.note;
+}
+
+function commitDetailInterest() {
+  const job = jobs.find(j => String(j.id) === String(state.detailJobId)) || jobs[0];
+  if (!state.swipe.likedIds.includes(job.id)) state.swipe.likedIds.push(job.id);
+  state.swipe.lastAction = { direction:"right", job };
+  navigator.vibrate?.([20, 30, 80]);
+  go("match");
+}
+
+function renderJobDetail() {
+  const job      = jobs.find(j => String(j.id) === String(state.detailJobId)) || jobs[0];
+  const back     = state.detailSource === "discover" ? "discover" :
+                   state.detailSource === "nearby"   ? "nearby"   : "home";
+  const sColor   = jdScoreColor(job.matchScore);
+  const ringOff  = Math.round(226 * (1 - job.matchScore / 100));
+  const grad     = `linear-gradient(160deg,rgba(${job.hue},.85) 0%,rgba(${job.hue},.4) 55%,rgba(${job.hue},.15) 100%)`;
+  const walkPct  = Math.min(95, (job.travel.walk / 45) * 100);
+  const days     = scheduleActiveDays(job.schedule);
+  const timeStr  = scheduleTimeStr(job.schedule);
+  const hoursStr = scheduleHours(job.schedule);
+  const reasons  = getMatchReasons(job);
+
+  const daysHtml = JD_DAY_LABELS.map((d, i) =>
+    `<div class="jd-day${days[i] ? " jd-day-on" : ""}">${d}</div>`
+  ).join("");
+
+  const reqHtml = job.req.map(r => {
+    const matched = reqMatchesUser(r);
+    return `<div class="jd-req ${matched ? "jd-req-yes" : "jd-req-open"}">
+      <span class="jd-req-ic">${matched ? "✓" : "○"}</span>
+      <div>
+        <span class="jd-req-name">${r}</span>
+        <span class="jd-req-tag ${matched ? "jd-rtag-yes" : "jd-rtag-open"}">${matched ? "Profilinde var" : "Geliştirilebilir"}</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  const benefitsHtml = job.benefits.map(b =>
+    `<div class="jd-benefit"><span class="jd-bic">${benefitIcon(b)}</span>${b}</div>`
+  ).join("");
+
   return screen(`
-    <div class="detail-hero" style="background:${grad}">
-      <div class="big-initials">${job.initials}</div>
-      <button class="detail-hero-back" onclick="go('${backRoute}')">${icon("ti-arrow-left")}</button>
-      <button class="detail-hero-save">${icon("ti-bookmark")}</button>
-      <div class="detail-score-badge">${job.matchScore}% Uyum</div>
+    <div class="jd-hero" style="background:${grad}">
+      <button class="jd-nav-btn jd-back" onclick="go('${back}')">←</button>
+      <button class="jd-nav-btn jd-save">♡</button>
+
+      <div class="jd-ring-wrap">
+        <svg class="jd-ring-svg" viewBox="0 0 88 88">
+          <circle class="jd-ring-bg" cx="44" cy="44" r="36"/>
+          <circle class="jd-ring-arc" cx="44" cy="44" r="36"
+            style="stroke:${sColor};--offset:${ringOff}"/>
+        </svg>
+        <div class="jd-hero-init">${job.initials}</div>
+        <div class="jd-hero-score" style="color:${sColor}">${job.matchScore}%</div>
+      </div>
+
+      <div class="jd-hero-foot">
+        <h1 class="jd-hero-title">${job.title}</h1>
+        <p class="jd-hero-company">${job.company} · ${job.location || "Kadıköy, İstanbul"}</p>
+        <div class="jd-hero-pills">
+          <span class="jd-hpill">${job.sal.cur}${job.sal.min}/${job.sal.per}</span>
+          <span class="jd-hpill">${job.distance} km</span>
+          <span class="jd-hpill">${job.type}</span>
+        </div>
+      </div>
     </div>
-    <div class="detail-body">
-      <div class="detail-head">
-        <h1>${job.title}</h1>
-        <p class="company">${job.company} · ${job.location || "Kadıköy, İstanbul"}</p>
-        <div class="detail-kpis">
-          <div class="detail-kpi">
-            <span class="kpi-v" style="color:var(--success)">${job.sal.cur}${job.sal.min}</span>
-            <span class="kpi-l">Günlük Min</span>
-          </div>
-          <div class="detail-kpi">
-            <span class="kpi-v">${job.distance} km</span>
-            <span class="kpi-l">Mesafe</span>
-          </div>
-          <div class="detail-kpi">
-            <span class="kpi-v">${icon("ti-walk")} ${job.travel.walk}dk</span>
-            <span class="kpi-l">Yürüyerek</span>
-          </div>
-          <div class="detail-kpi">
-            <span class="kpi-v" style="color:var(--primary)">${job.type}</span>
-            <span class="kpi-l">Tip</span>
-          </div>
+
+    <div class="jd-body">
+
+      <div class="jd-card jd-match-card">
+        <div class="jd-match-left">
+          <div class="jd-score-big" style="color:${sColor}">${job.matchScore}<span>%</span></div>
+          <div class="jd-score-lbl">Uyum Skoru</div>
+        </div>
+        <div class="jd-match-right">
+          ${reasons.map(r => `<div class="jd-mr">✓ ${r}</div>`).join("")}
         </div>
       </div>
 
-      <div class="detail-section">
-        <h3>İlan Hakkında</h3>
-        <p>${job.desc}</p>
-      </div>
-      <div class="detail-section">
-        <h3>Aranan Özellikler</h3>
-        <ul class="detail-list">${job.req.map(r => `<li>${r}</li>`).join("")}</ul>
-      </div>
-      <div class="detail-section">
-        <h3>Çalışma Saatleri</h3>
-        <p>${job.schedule}</p>
-      </div>
-      <div class="detail-section">
-        <h3>Yan Haklar</h3>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:2px">
-          ${job.benefits.map(b => `<span class="badge badge-success">${b}</span>`).join("")}
+      <div class="jd-sec-hdr">Mesafe & Ulaşım</div>
+      <div class="jd-card">
+        <div class="jd-travel-row">
+          <button class="jd-tm jd-tm-on" onclick="setDetailMode('walk',this)">
+            🚶 ${job.travel.walk} dk<span>Yürüyerek</span>
+          </button>
+          <button class="jd-tm" onclick="setDetailMode('bus',this)">
+            🚌 ${job.travel.bus} dk<span>Otobüs</span>
+          </button>
+          <button class="jd-tm" onclick="setDetailMode('car',this)">
+            🚗 ${job.travel.car} dk<span>Araba</span>
+          </button>
         </div>
-      </div>
-      <div class="detail-section">
-        <h3>Ulaşım Süresi</h3>
-        <div style="display:flex;gap:10px;margin-top:4px">
-          <div class="detail-kpi"><span class="kpi-v">${icon("ti-walk")} ${job.travel.walk}dk</span><span class="kpi-l">Yürüyerek</span></div>
-          <div class="detail-kpi"><span class="kpi-v">${icon("ti-bus")} ${job.travel.bus}dk</span><span class="kpi-l">Otobüs</span></div>
-          <div class="detail-kpi"><span class="kpi-v">${icon("ti-car")} ${job.travel.car}dk</span><span class="kpi-l">Araba</span></div>
+        <div class="jd-dist-bar">
+          <div class="jd-dist-fill" id="jd-dist-fill" style="width:${walkPct}%"></div>
         </div>
+        <p class="jd-dist-note" id="jd-dist-note">${job.distance} km · Yürüyerek ${job.travel.walk} dakika</p>
       </div>
+
+      <div class="jd-sec-hdr">Ücret</div>
+      <div class="jd-card jd-sal-card">
+        <div class="jd-sal-range">
+          <span class="jd-sal-cur">${job.sal.cur}</span>${job.sal.min}
+          <span class="jd-sal-dash"> – </span>
+          <span class="jd-sal-cur">${job.sal.cur}</span>${job.sal.max}
+          <span class="jd-sal-per">/${job.sal.per}</span>
+        </div>
+        <div class="jd-sal-tag">↑ Ücret beklentinin üzerinde</div>
+      </div>
+
+      <div class="jd-sec-hdr">Çalışma Takvimi</div>
+      <div class="jd-card jd-sched-card">
+        <div class="jd-days">${daysHtml}</div>
+        <div class="jd-sched-row">
+          <span class="jd-sched-time">${timeStr}</span>
+          ${hoursStr ? `<span class="jd-sched-hrs">${hoursStr}</span>` : ""}
+        </div>
+        <span class="jd-type-pill">${job.type}</span>
+      </div>
+
+      <div class="jd-sec-hdr">İşletme</div>
+      <div class="jd-card">
+        <div class="jd-co-row">
+          <div class="jd-co-init" style="background:rgba(${job.hue},.15);color:rgba(${job.hue},1)">${job.initials}</div>
+          <div class="jd-co-info">
+            <div class="jd-co-name">${job.company}</div>
+            <div class="jd-co-meta">⭐ 4.8 · 127 işe alım · 3 yıllık üye</div>
+          </div>
+          <span class="jd-verified">✓ Onaylı</span>
+        </div>
+        <p class="jd-co-desc">${job.desc}</p>
+      </div>
+
+      <div class="jd-sec-hdr">Aranan Özellikler</div>
+      <div class="jd-card"><div class="jd-reqs">${reqHtml}</div></div>
+
+      <div class="jd-sec-hdr">Yan Haklar</div>
+      <div class="jd-card"><div class="jd-benefits">${benefitsHtml}</div></div>
+
+      <div style="height:6px"></div>
     </div>
-    <div class="detail-ctas">
-      <button class="btn btn-ghost" style="flex:1" onclick="go('navigation')">
-        ${icon("ti-map-pin")} Yol Tarifi
-      </button>
-      <button class="btn btn-primary" style="flex:2" onclick="swipeCard('right');go('match')">
-        ${icon("ti-heart")} Eşleş
-      </button>
+
+    <div class="jd-cta-bar">
+      <button class="jd-cta-sec" onclick="go('navigation')">🗺 Yol Tarifi</button>
+      <button class="jd-cta-pri" onclick="commitDetailInterest()">♥ İlgileniyorum</button>
     </div>`);
 }
 
@@ -3397,6 +3538,7 @@ Object.assign(window, {
   markAllRead, markNotifRead, toggleNotifPref,
   togglePrefType, setPrefRadius, filterSwipeDeck,
   toggleSpeedMode, showLikeExplosion, showSwipeToast, updateDeckInfo,
+  setDetailMode, commitDetailInterest,
   openInterview, refreshLocation,
   formatAuthPhone, submitAuthPhone, onRegOtpInput, onRegOtpKey,
   onRegNameInput, updateRegAvatar, cycleAvatarColor,
