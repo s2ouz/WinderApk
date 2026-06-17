@@ -15,6 +15,15 @@ const state = {
     name: "",
     phone: "",
   },
+  register: {
+    phone: "",
+    firstname: "",
+    lastname: "",
+    skills: [],
+    city: "İstanbul",
+    district: "Kadıköy",
+    otpVerified: false,
+  },
   messages: [
     { from:"business", text:"Merhaba Selin, profilini inceledik. Hafta sonu vardiyası için görüşmek ister misin?", time:"14:08" },
     { from:"me",       text:"Merhaba, uygunum. Vardiya saatleri nasıl olacak?", time:"14:10" },
@@ -306,27 +315,43 @@ function jobRow(job) {
 
 /* ─── SCREENS ────────────────────────────────────────────────────── */
 
-/* AUTH */
+/* AUTH — Phone-based entry */
 function renderAuth() {
-  return screen(`
-    <div class="auth-screen anim-fade-in">
-      <div class="auth-logo">
-        <div class="auth-logo-mark">✦</div>
-        <span class="auth-logo-text">Matchwork</span>
+  const fmtPhone = state.register.phone.length >= 10
+    ? state.register.phone.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4")
+    : state.register.phone;
+  return `<div class="reg-screen anim-fade-in">
+    <div class="reg-brand">
+      <div class="reg-brand-mark">✦</div>
+      <span class="reg-brand-name">Matchwork</span>
+    </div>
+    <div class="reg-phone-hero">
+      <div class="reg-ping-ring reg-ring-1"></div>
+      <div class="reg-ping-ring reg-ring-2"></div>
+      <div class="reg-phone-icon">📱</div>
+    </div>
+    <div class="reg-copy">
+      <h2 class="reg-h1">Numaranı gir</h2>
+      <p class="reg-sub">Sana bir onay kodu göndereceğiz.<br>
+        <span class="reg-time-hint">60 saniyede içeridesın.</span></p>
+    </div>
+    <div class="reg-form">
+      <div class="ob-phone-wrap">
+        <span class="ob-phone-prefix">🇹🇷 +90</span>
+        <input class="input-field ob-phone-input" id="auth-phone"
+          type="tel" inputmode="numeric"
+          placeholder="5XX XXX XX XX" maxlength="14"
+          autocomplete="tel-national" value="${fmtPhone}"
+          oninput="formatAuthPhone(this)"
+          onkeydown="if(event.key==='Enter')submitAuthPhone()">
       </div>
-      <p class="auth-tagline">Yakınındaki işleri keşfet, eşleş, çalış.</p>
-      <div class="input-group">
-        <label class="input-label">E-posta</label>
-        <input class="input-field" type="email" placeholder="ornek@email.com" value="selin@demo.com">
-      </div>
-      <div class="input-group">
-        <label class="input-label">Şifre</label>
-        <input class="input-field" type="password" placeholder="••••••••" value="demo1234">
-      </div>
-      <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="doLogin()">Giriş Yap</button>
+      <button class="btn btn-primary btn-full reg-cta" id="auth-phone-btn"
+        style="margin-top:12px" onclick="submitAuthPhone()"
+        ${state.register.phone.length >= 10 ? "" : "disabled"}>Devam Et →</button>
       <div class="auth-divider">veya</div>
       <button class="btn btn-ghost btn-full" onclick="demoLogin()">Demo ile Dene →</button>
-    </div>`);
+    </div>
+  </div>`;
 }
 
 /* HOME */
@@ -1329,6 +1354,351 @@ function renderResult() {
     </div>`, bottomNav(""));
 }
 
+/* ─── REGISTRATION ───────────────────────────────────────────────── */
+
+const REG_ROLES = [
+  { section:"Yiyecek & İçecek",  chips:["Barista","Garson","Aşçı Yardımcısı","Kasa Görevlisi","Şef"] },
+  { section:"Satış & Perakende", chips:["Satış Danışmanı","Mağaza Görevlisi","Stokçu"] },
+  { section:"Lojistik",          chips:["Kurye","Depo Görevlisi","Dağıtım"] },
+  { section:"Güzellik & Bakım",  chips:["Kuaför","Estetisyen","Spa Görevlisi"] },
+  { section:"Teknik",            chips:["IT Destek","Teknik Servis","Elektrikçi"] },
+  { section:"Temizlik",          chips:["Temizlik Görevlisi","Ev Temizliği"] },
+];
+
+const REG_CITIES = ["İstanbul","Ankara","İzmir","Bursa","Antalya"];
+const REG_DISTRICTS = {
+  "İstanbul":["Kadıköy","Beşiktaş","Şişli","Üsküdar","Fatih","Beyoğlu","Bakırköy","Maltepe"],
+  "Ankara":  ["Çankaya","Keçiören","Mamak","Etimesgut","Yenimahalle"],
+  "İzmir":   ["Konak","Bornova","Karşıyaka","Buca","Çiğli"],
+  "Bursa":   ["Osmangazi","Nilüfer","Yıldırım","Gemlik"],
+  "Antalya": ["Muratpaşa","Kepez","Konyaaltı","Döşemealtı"],
+};
+
+function getRegInitials() {
+  const f = state.register.firstname;
+  const l = state.register.lastname;
+  if (!f) return user.initials || "SK";
+  return ((f[0] || "") + (l?.[0] || "")).toUpperCase();
+}
+
+function renderRegisterOTP() {
+  const phone = state.register.phone
+    ? state.register.phone.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4")
+    : "5XX XXX XX XX";
+  return `<div class="reg-screen">
+    ${obProgress(1, 5)}
+    <button class="reg-back" onclick="go('auth')">←</button>
+    <div class="reg-copy" style="align-items:center;text-align:center;padding-top:24px">
+      <div class="reg-otp-icon">📱</div>
+      <h2 class="reg-h1" style="text-align:center">Kodu gir</h2>
+      <p class="reg-sub" style="text-align:center">+90 ${phone} numarana<br>4 haneli kod gönderdik.</p>
+    </div>
+    <div class="ob-otp-inputs">
+      <input class="ob-otp-box" id="rotp0" type="tel" inputmode="numeric" maxlength="1"
+        oninput="onRegOtpInput(this,0)" onkeydown="onRegOtpKey(event,0)">
+      <input class="ob-otp-box" id="rotp1" type="tel" inputmode="numeric" maxlength="1"
+        oninput="onRegOtpInput(this,1)" onkeydown="onRegOtpKey(event,1)">
+      <input class="ob-otp-box" id="rotp2" type="tel" inputmode="numeric" maxlength="1"
+        oninput="onRegOtpInput(this,2)" onkeydown="onRegOtpKey(event,2)">
+      <input class="ob-otp-box" id="rotp3" type="tel" inputmode="numeric" maxlength="1"
+        oninput="onRegOtpInput(this,3)" onkeydown="onRegOtpKey(event,3)">
+    </div>
+    <div id="reg-otp-feedback" class="ob-otp-feedback"></div>
+    <div class="ob-sticky-bottom" style="border-top:none;padding-top:4px">
+      <button class="ob-resend-btn" id="reg-resend" disabled>
+        Kodu almadım → <span id="reg-resend-timer">60s</span> sonra tekrar gönder
+      </button>
+      <button class="reg-minor-btn" onclick="go('auth')">Numarayı değiştir</button>
+    </div>
+  </div>`;
+}
+
+function renderRegisterName() {
+  const hasName = state.register.firstname.trim().length >= 2;
+  return `<div class="reg-screen">
+    ${obProgress(2, 5)}
+    <button class="reg-back" onclick="go('register-otp')">←</button>
+    <div class="reg-avatar-area">
+      <div class="reg-avatar" id="reg-avatar-circle">${getRegInitials()}</div>
+      <button class="reg-avatar-change" onclick="cycleAvatarColor()">Rengi değiştir</button>
+    </div>
+    <div class="reg-copy">
+      <h2 class="reg-h1">Adın ne?</h2>
+      <p class="reg-sub">Profil kartında görünecek.</p>
+    </div>
+    <div class="reg-form">
+      <div class="input-group">
+        <label class="input-label">Ad</label>
+        <input class="input-field" id="reg-firstname" type="text"
+          autocapitalize="words" autocomplete="given-name"
+          placeholder="Ad" value="${state.register.firstname}"
+          oninput="onRegNameInput(this)">
+      </div>
+      <div class="input-group">
+        <label class="input-label" style="color:var(--text-3)">Soyad (opsiyonel)</label>
+        <input class="input-field" id="reg-lastname" type="text"
+          autocapitalize="words" autocomplete="family-name"
+          placeholder="Soyad" value="${state.register.lastname}"
+          oninput="state.register.lastname=this.value;updateRegAvatar()">
+      </div>
+      <p class="ob-legal">İsmini daha sonra değiştirebilirsin.</p>
+    </div>
+    <div class="ob-sticky-bottom" style="border-top:none">
+      <button class="btn btn-primary btn-full ob-btn${hasName ? "" : " disabled"}"
+        id="reg-name-btn" ${hasName ? "" : "disabled"} onclick="go('register-role')">
+        Devam Et →
+      </button>
+    </div>
+  </div>`;
+}
+
+function renderRegisterRole() {
+  const sel = state.register.skills;
+  return `<div class="reg-screen">
+    ${obProgress(3, 5)}
+    <button class="reg-back" onclick="go('register-name')">←</button>
+    <div class="reg-mini-profile">
+      <div class="reg-mini-avatar">${getRegInitials()}</div>
+      <span class="reg-mini-name">${state.register.firstname || "Sen"}</span>
+    </div>
+    <div class="reg-copy" style="padding-top:10px">
+      <h2 class="reg-h1">Ne işler yapıyorsun?</h2>
+      <p class="reg-sub">İşverenler seni bu alanlarda arar.</p>
+    </div>
+    <div class="reg-roles-body">
+      ${REG_ROLES.map(g => `
+        <div class="reg-role-section">
+          <p class="reg-role-label">${g.section}</p>
+          <div class="reg-role-chips">
+            ${g.chips.map(c => `
+              <span class="ob-chip${sel.includes(c) ? " active" : ""}" onclick="toggleRegSkill('${c}')">
+                ${sel.includes(c) ? "✓ " : ""}${c}
+              </span>`).join("")}
+          </div>
+        </div>`).join("")}
+    </div>
+    <div class="ob-sticky-bottom">
+      <div class="ob-count">${sel.length > 0 ? `${sel.length} beceri seçildi` : "En az 1 seç"}</div>
+      <button class="btn btn-primary btn-full ob-btn${sel.length === 0 ? " disabled" : ""}"
+        ${sel.length === 0 ? "disabled" : ""} onclick="goToRegisterLocation()">
+        Profilimi Oluştur →
+      </button>
+      <button class="reg-skip-btn" onclick="goToRegisterLocation()">Şimdi değil, sonra eklerim</button>
+    </div>
+  </div>`;
+}
+
+function renderRegisterLocation() {
+  const city = state.register.city;
+  const district = state.register.district;
+  const districts = REG_DISTRICTS[city] || [];
+  return `<div class="reg-screen">
+    ${obProgress(4, 5)}
+    <button class="reg-back" onclick="go('register-role')">←</button>
+    <div class="reg-copy" style="align-items:center;text-align:center;padding-top:16px">
+      <div class="reg-loc-icon">📍</div>
+      <h2 class="reg-h1" style="text-align:center">Çalışmak istediğin<br>bölge hangisi?</h2>
+      <p class="reg-sub" style="text-align:center">Yakınındaki fırsatları sana göstereceğiz.</p>
+    </div>
+    <div class="reg-loc-body">
+      <p class="reg-role-label">Şehir</p>
+      <div class="reg-city-grid">
+        ${REG_CITIES.map(c => `
+          <div class="reg-city-card${city === c ? " selected" : ""}" onclick="selectRegCity('${c}')">
+            ${c}${city === c ? '<span class="reg-city-check">✓</span>' : ""}
+          </div>`).join("")}
+      </div>
+      ${districts.length ? `
+        <p class="reg-role-label" style="margin-top:18px">İlçe</p>
+        <div class="reg-role-chips" id="reg-district-chips">
+          ${districts.map(d => `
+            <span class="ob-chip${district === d ? " active" : ""}" onclick="selectRegDistrict('${d}')">${d}</span>`).join("")}
+        </div>` : ""}
+    </div>
+    <div class="ob-sticky-bottom" style="border-top:none">
+      <button class="btn btn-primary btn-full ob-btn" onclick="finishRegistration()">Hazırım →</button>
+    </div>
+  </div>`;
+}
+
+function renderRegisterSuccess() {
+  const fullName = [state.register.firstname, state.register.lastname].filter(Boolean).join(" ");
+  const loc = state.register.district || state.register.city || "Kadıköy";
+  setTimeout(() => {
+    const el = document.getElementById("reg-count-num");
+    if (!el) return;
+    let n = 0; const target = jobs.length;
+    const t = setInterval(() => { n = Math.min(n+1, target); el.textContent = n; if (n >= target) clearInterval(t); }, 55);
+  }, 400);
+  return `<div class="reg-screen reg-success anim-fade-in">
+    <div class="ob-confetti">${_generateConfetti()}</div>
+    <div class="reg-success-hero">
+      <div class="reg-success-avatar">${getRegInitials()}</div>
+      <div style="text-align:center">
+        <div class="ob-count-num" id="reg-count-num">0</div>
+        <div class="ob-count-label">fırsat seni bekliyor</div>
+        <p class="ob-count-sub" style="margin-top:6px">${state.register.firstname || user.short}, ${loc}'ye hoş geldin.</p>
+      </div>
+    </div>
+    <div class="reg-profile-card">
+      <div class="reg-card-avatar">${getRegInitials()}</div>
+      <div class="reg-card-info">
+        <h3>${fullName || user.name}</h3>
+        <p>${state.register.skills.slice(0,2).join(" · ") || user.role}</p>
+        <p class="reg-card-loc">📍 ${loc} · ✓ Doğrulandı</p>
+      </div>
+      <button class="reg-card-edit" onclick="go('settings-profile')">Düzenle →</button>
+    </div>
+    <div class="ob-sticky-bottom ob-success-actions" style="border-top:none">
+      <button class="btn btn-primary btn-full ob-btn ob-btn-pulse" onclick="completeRegistration()">
+        Keşfetmeye Başla →
+      </button>
+    </div>
+  </div>`;
+}
+
+/* ─── REGISTRATION HELPERS ──────────────────────────────────────── */
+
+function formatAuthPhone(input) {
+  let raw = input.value.replace(/\D/g, "");
+  if (raw.length > 10) raw = raw.slice(0, 10);
+  let fmt = raw;
+  if (raw.length > 3) fmt = raw.slice(0,3) + " " + raw.slice(3);
+  if (raw.length > 6) fmt = raw.slice(0,3) + " " + raw.slice(3,6) + " " + raw.slice(6);
+  if (raw.length > 8) fmt = raw.slice(0,3) + " " + raw.slice(3,6) + " " + raw.slice(6,8) + " " + raw.slice(8);
+  input.value = fmt;
+  state.register.phone = raw;
+  const btn = document.getElementById("auth-phone-btn");
+  if (btn) btn.disabled = raw.length < 10;
+}
+
+function submitAuthPhone() {
+  if (state.register.phone.length < 10) return;
+  go("register-otp");
+}
+
+let _regOtpTimer = null;
+function startRegOtpTimer() {
+  let secs = 60;
+  const timerEl = document.getElementById("reg-resend-timer");
+  const btn = document.getElementById("reg-resend");
+  if (_regOtpTimer) clearInterval(_regOtpTimer);
+  _regOtpTimer = setInterval(() => {
+    secs--;
+    if (timerEl) timerEl.textContent = `${secs}s`;
+    if (secs <= 0) {
+      clearInterval(_regOtpTimer);
+      if (btn) { btn.disabled = false; btn.innerHTML = `Kodu almadım → <u>Yeniden gönder</u>`; }
+    }
+  }, 1000);
+}
+
+function onRegOtpInput(el, idx) {
+  el.value = el.value.replace(/\D/g, "");
+  if (el.value && idx < 3) document.getElementById(`rotp${idx+1}`)?.focus();
+  const code = [0,1,2,3].map(i => document.getElementById(`rotp${i}`)?.value || "").join("");
+  if (code.length === 4) {
+    [0,1,2,3].forEach(i => {
+      const b = document.getElementById(`rotp${i}`);
+      if (b) { b.style.borderColor = "var(--success)"; b.style.background = "var(--success-dim)"; }
+    });
+    const fb = document.getElementById("reg-otp-feedback");
+    if (fb) { fb.textContent = "✓ Doğrulandı"; fb.className = "ob-otp-feedback ob-otp-success"; }
+    state.register.otpVerified = true;
+    setTimeout(() => go("register-name"), 700);
+  }
+}
+
+function onRegOtpKey(e, idx) {
+  if (e.key === "Backspace" && !e.target.value && idx > 0) {
+    document.getElementById(`rotp${idx-1}`)?.focus();
+  }
+}
+
+function onRegNameInput(input) {
+  state.register.firstname = input.value;
+  updateRegAvatar();
+  const btn = document.getElementById("reg-name-btn");
+  if (btn) {
+    const ok = input.value.trim().length >= 2;
+    btn.disabled = !ok;
+    btn.classList.toggle("disabled", !ok);
+  }
+}
+
+function updateRegAvatar() {
+  const el = document.getElementById("reg-avatar-circle");
+  if (el) el.textContent = getRegInitials() || "?";
+}
+
+const _avatarColors = ["var(--primary)","var(--success)","#8B5CFF","#F59E0B","#06B6D4","#EC4899","#10B981","#EF4444"];
+let _avatarColorIdx = 0;
+function cycleAvatarColor() {
+  _avatarColorIdx = (_avatarColorIdx + 1) % _avatarColors.length;
+  const el = document.getElementById("reg-avatar-circle");
+  if (el) el.style.background = _avatarColors[_avatarColorIdx];
+}
+
+function toggleRegSkill(skill) {
+  const skills = state.register.skills;
+  const idx = skills.indexOf(skill);
+  if (idx >= 0) skills.splice(idx, 1);
+  else if (skills.length < 5) skills.push(skill);
+  document.querySelectorAll(".reg-role-chips .ob-chip").forEach(chip => {
+    const raw = chip.textContent.replace(/^✓\s*/, "").trim();
+    if (raw !== skill) return;
+    const active = skills.includes(skill);
+    chip.classList.toggle("active", active);
+    chip.textContent = (active ? "✓ " : "") + skill;
+  });
+  const countEl = document.querySelector(".ob-count");
+  if (countEl) countEl.textContent = skills.length > 0 ? `${skills.length} beceri seçildi` : "En az 1 seç";
+  const btn = document.querySelector(".ob-sticky-bottom .ob-btn");
+  if (btn) { btn.disabled = skills.length === 0; btn.classList.toggle("disabled", skills.length === 0); }
+}
+
+function goToRegisterLocation() {
+  if (window.MW?.Location?.current) {
+    finishRegistration();
+  } else {
+    go("register-location");
+  }
+}
+
+function selectRegCity(city) {
+  state.register.city = city;
+  state.register.district = "";
+  render();
+}
+
+function selectRegDistrict(district) {
+  state.register.district = district;
+  document.querySelectorAll("#reg-district-chips .ob-chip").forEach(c => {
+    c.classList.toggle("active", c.textContent.trim() === district);
+  });
+}
+
+function finishRegistration() {
+  if (state.register.firstname) {
+    user.name = [state.register.firstname, state.register.lastname].filter(Boolean).join(" ");
+    user.short = state.register.firstname;
+    user.initials = getRegInitials();
+  }
+  if (state.register.skills.length) {
+    user.skills = [...state.register.skills, ...user.skills.filter(s => !state.register.skills.includes(s))];
+    user.role = state.register.skills.slice(0, 2).join(" · ");
+  }
+  if (state.register.district || state.register.city) {
+    user.location = [state.register.district, state.register.city].filter(Boolean).join(", ");
+  }
+  go("register-success");
+}
+
+function completeRegistration() {
+  localStorage.setItem("mw_onboarding_done", "1");
+  go("home");
+}
+
 /* ─── ONBOARDING ────────────────────────────────────────────────── */
 
 function obProgress(step, total = 5) {
@@ -1783,6 +2153,11 @@ function resetOnboarding() {
 
 /* ─── ROUTER MAP ─────────────────────────────────────────────────── */
 const routes = {
+  "register-otp":      renderRegisterOTP,
+  "register-name":     renderRegisterName,
+  "register-role":     renderRegisterRole,
+  "register-location": renderRegisterLocation,
+  "register-success":  renderRegisterSuccess,
   "onboarding-splash":     renderOnboardingSplash,
   "onboarding-welcome":    renderOnboardingWelcome,
   "onboarding-location":   renderOnboardingLocation,
@@ -1827,6 +2202,12 @@ function render() {
   }
   if (route === "messages") {
     requestAnimationFrame(() => loadMatchesList());
+  }
+  if (route === "register-otp") {
+    requestAnimationFrame(() => {
+      document.getElementById("rotp0")?.focus();
+      startRegOtpTimer();
+    });
   }
   if (route === "onboarding-otp") {
     requestAnimationFrame(() => {
@@ -2391,6 +2772,10 @@ Object.assign(window, {
   markAllRead, markNotifRead, toggleNotifPref,
   togglePrefType, setPrefRadius, filterSwipeDeck,
   openInterview, refreshLocation,
+  formatAuthPhone, submitAuthPhone, onRegOtpInput, onRegOtpKey,
+  onRegNameInput, updateRegAvatar, cycleAvatarColor,
+  toggleRegSkill, goToRegisterLocation, selectRegCity, selectRegDistrict,
+  finishRegistration, completeRegistration,
   requestLocationPermission, selectUserType, toggleCategory,
   updateObDistance, toggleObWorkType, updateObSalary,
   updateObAccountBtn, onOtpInput, onOtpKey,
