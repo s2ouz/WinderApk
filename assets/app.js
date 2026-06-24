@@ -569,10 +569,7 @@ function trendCard(job) {
 
 /* AUTH — Phone-based entry */
 function renderAuth() {
-  const fmtPhone = state.register.phone.length >= 10
-    ? state.register.phone.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4")
-    : state.register.phone;
-  return `<div class="reg-screen anim-fade-in">
+  return `<div class="auth-screen reg-screen anim-fade-in">
     <div class="reg-brand">
       <div class="reg-brand-mark">✦</div>
       <span class="reg-brand-name">Matchwork</span>
@@ -580,28 +577,25 @@ function renderAuth() {
     <div class="reg-phone-hero">
       <div class="reg-ping-ring reg-ring-1"></div>
       <div class="reg-ping-ring reg-ring-2"></div>
-      <div class="reg-phone-icon">📱</div>
+      <div class="reg-phone-icon">🔑</div>
     </div>
     <div class="reg-copy">
-      <h2 class="reg-h1">Numaranı gir</h2>
-      <p class="reg-sub">Sana bir onay kodu göndereceğiz.<br>
-        <span class="reg-time-hint">60 saniyede içeridesın.</span></p>
+      <h2 class="reg-h1">Tekrar hoş geldin</h2>
+      <p class="reg-sub">Hesabına giriş yap.</p>
     </div>
     <div class="reg-form">
-      <div class="ob-phone-wrap">
-        <span class="ob-phone-prefix">🇹🇷 +90</span>
-        <input class="input-field ob-phone-input" id="auth-phone"
-          type="tel" inputmode="numeric"
-          placeholder="5XX XXX XX XX" maxlength="14"
-          autocomplete="tel-national" value="${fmtPhone}"
-          oninput="formatAuthPhone(this)"
-          onkeydown="if(event.key==='Enter')submitAuthPhone()">
-      </div>
-      <button class="btn btn-primary btn-full reg-cta" id="auth-phone-btn"
-        style="margin-top:12px" onclick="submitAuthPhone()"
-        ${state.register.phone.length >= 10 ? "" : "disabled"}>Devam Et →</button>
+      <input class="input-field" type="email" placeholder="E-posta adresin"
+        autocomplete="email"
+        onkeydown="if(event.key==='Enter')this.nextElementSibling.focus()">
+      <input class="input-field" type="password" placeholder="Şifren"
+        autocomplete="current-password" style="margin-top:10px"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn btn-primary btn-full reg-cta" style="margin-top:12px"
+        onclick="doLogin()">Giriş Yap →</button>
       <div class="auth-divider">veya</div>
       <button class="btn btn-ghost btn-full" onclick="demoLogin()">Demo ile Dene →</button>
+      <button class="btn btn-ghost btn-full" style="margin-top:8px;opacity:.6;font-size:13px"
+        onclick="go('onboarding-welcome')">← Geri dön</button>
     </div>
   </div>`;
 }
