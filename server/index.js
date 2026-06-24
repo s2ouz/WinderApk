@@ -9,19 +9,8 @@ const app    = express();
 const server = http.createServer(app);
 
 // ─── CORS ─────────────────────────────────────────────────────────
-// CLIENT_ORIGIN env'ine virgülle ayrılmış liste verilebilir
-const allowedOrigins = [
-  ...( process.env.CLIENT_ORIGIN || "http://localhost:3456" ).split(",").map(s => s.trim()),
-  "http://localhost:3456",
-  "http://localhost:4173",
-  "http://127.0.0.1:4173",
-  "null",
-];
-
-app.use(cors({
-  origin: (origin, cb) => cb(null, !origin || allowedOrigins.includes(origin)),
-  credentials: true,
-}));
+// JWT auth güvenliği sağladığı için tüm origin'lere izin veriyoruz
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 // ─── REST ROUTES ──────────────────────────────────────────────────
@@ -34,7 +23,7 @@ app.get("/health", (_, res) => res.json({ ok: true, ts: new Date() }));
 
 // ─── SOCKET.IO ────────────────────────────────────────────────────
 const io = new Server(server, {
-  cors: { origin: allowedOrigins, credentials: true },
+  cors: { origin: true, credentials: true },
 });
 
 const onlineUsers = new Map();
