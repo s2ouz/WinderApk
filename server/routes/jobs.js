@@ -6,14 +6,36 @@ router.get("/", requireAuth, async (req, res) => {
   const { lat, lng, radius = 5000, type, q } = req.query;
 
   if (lat && lng) {
-    // PostGIS tabanlı yakın ilanlar
-    const { data, error } = await supabase.rpc("jobs_near", {
-      user_lat: parseFloat(lat),
-      user_lng: parseFloat(lng),
-      radius_m: parseFloat(radius),
-    });
+    const uLat = parseFloat(lat);
+    const uLng = parseFloat(lng);
+    const radM = parseFloat(radius);
+
+    const { data, error } = await supabase
+      .from("jobs")
+      .select(`
+        id, title, description, location, lat, lng,
+        salary_min, salary_max, currency, period, type,
+        schedule, tags, requirements, benefits,
+        companies ( id, name, initials, verified )
+      `)
+      .eq("active", true);
+
     if (error) return res.status(500).json({ error: error.message });
-    return res.json(data);
+
+    function hsDist(lat1, lng1, lat2, lng2) {
+      const R = 6371000;
+      const dL = (lat2 - lat1) * Math.PI / 180;
+      const dN = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dL / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dN / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    const nearby = (data || [])
+      .filter(j => j.lat && j.lng && hsDist(uLat, uLng, j.lat, j.lng) <= radM)
+      .sort((a, b) => hsDist(uLat, uLng, a.lat, a.lng) - hsDist(uLat, uLng, b.lat, b.lng));
+
+    return res.json(nearby);
   }
 
   // Standart filtreleme

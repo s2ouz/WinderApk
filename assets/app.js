@@ -5163,12 +5163,12 @@ async function loadJobsFromAPI() {
   if (!window.MW?.Auth.isLoggedIn()) return;
   try {
     const loc = await window.MW.Location.get();
-    const data = await window.MW.JobsAPI.list();
+    const data = await window.MW.JobsAPI.nearby(loc.lat, loc.lng, 5000);
     if (Array.isArray(data) && data.length > 0) {
-      jobs = data
-        .map((j, i) => mapFullApiJob(j, i, loc.lat, loc.lng))
-        .sort((a, b) => a.distance - b.distance);
+      jobs = data.map((j, i) => mapFullApiJob(j, i, loc.lat, loc.lng));
       _apiJobsLoaded = true;
+      state.swipe.deckIndex = 0;
+      if (currentRoute() === "discover") render();
     }
   } catch(e) {
     console.warn("API yüklenemedi, demo verisi kullanılıyor:", e);
