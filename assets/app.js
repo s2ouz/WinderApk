@@ -5716,6 +5716,19 @@ window.addEventListener("offline", () => {
 window.addEventListener("online", () => render());
 window.addEventListener("DOMContentLoaded", async () => {
   if (localStorage.getItem("mw_theme") === "light") document.body.classList.add("light-mode");
+
+  // Email doğrulama linki tıklandığında Supabase #access_token=... ile yönlendirir
+  if (window.location.hash.includes("access_token=")) {
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken  = params.get("access_token");
+    const refreshToken = params.get("refresh_token");
+    if (accessToken) {
+      window.MW.Auth.setSession(accessToken, refreshToken || "");
+      history.replaceState(null, "", "#home");
+      setTimeout(() => showToast("E-posta doğrulandı! Hoş geldin 🎉", "success"), 800);
+    }
+  }
+
   dgLoad();
   dgCheckWeekReset();
   const onboardingDone = localStorage.getItem("mw_onboarding_done");

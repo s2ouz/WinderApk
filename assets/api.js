@@ -80,14 +80,31 @@ const AuthAPI = {
       Auth.setSession(data.access_token, data.refresh_token);
       return { ok: true, profile: data.profile };
     }
-    return { ok: false, error: data?.error || "Giriş başarısız" };
+    return { ok: false, error: data?.error || "Giriş başarısız", code: data?.code };
   },
 
-  async register(payload) {
-    const data = await api("POST", "/api/auth/register", payload);
-    if (data?.pending) return { ok: true, pending: true };
-    if (data?.user_id) return { ok: true };
-    return { ok: false, error: data?.error || "Kayıt başarısız" };
+  // Kayıt: doğrudan Supabase'e gider — sunucu bypass, SUPABASE_ANON_KEY server'da gerek yok
+  async register({ email, password, full_name, role_label }) {
+    const sb = getSupabase();
+    if (!sb) return { ok: false, error: "Supabase yüklenemedi" };
+
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { full_name: full_name || "", role_label: role_label || "" },
+        emailRedirectTo: window.location.origin,
+      },
+    });
+
+    if (error) return { ok: false, error: error.message };
+
+    // Kullanıcı zaten var ama email doğrulanmamış
+    if (data.user?.identities?.length === 0) {
+      return { ok: false, error: "Bu email ile zaten bir hesap var. Lütfen e-postanızı kontrol edin." };
+    }
+
+    return { ok: true, pending: true };
   },
 
   async getProfile() {
@@ -207,4 +224,4 @@ const Location = {
 };
 
 /* ─── EXPORT ─────────────────────────────────────────────────────── */
-window.MW = { AuthAPI, JobsAPI, MatchesAPI, MessagesAPI, Socket, Auth, Location };
+window.MW = { AuthAPI, JobsAPI, MatchesAPI, MessagesAPI, Socket, Auth, Location, getSupabase };
