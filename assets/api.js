@@ -85,7 +85,9 @@ const AuthAPI = {
 
   async register(payload) {
     const data = await api("POST", "/api/auth/register", payload);
-    return data?.user_id ? { ok: true } : { ok: false, error: data?.error };
+    if (data?.pending) return { ok: true, pending: true };
+    if (data?.user_id) return { ok: true };
+    return { ok: false, error: data?.error || "Kayıt başarısız" };
   },
 
   async getProfile() {
