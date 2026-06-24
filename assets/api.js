@@ -5,8 +5,8 @@
 
 /* ─── CONFIG ─────────────────────────────────────────────────────── */
 // Kendi Supabase projen bilgilerini gir:
-const SUPABASE_URL     = "https://lscfbmmipaorethwnnln.supabase.co";
-const SUPABASE_ANON    = "sb_publishable_ZSIFCipXX-zEibFw6qrNsA_IFxdJG1v";
+const SUPABASE_URL     = "https://mavdzfbfjljnyrtwgibl.supabase.co";
+const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hdmR6ZmJmamxqbnlydHdnaWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMjI0MTYsImV4cCI6MjA5Nzg5ODQxNn0.XJcWu-eFvkY2PVjyvX_mKnnVB79UNJVvxE8LsAwFjTI";
 const SERVER_URL       = "http://localhost:4000";   // Node.js + Socket.io sunucusu
 
 /* ─── SUPABASE CLIENT ────────────────────────────────────────────── */
