@@ -14,6 +14,8 @@ const state = {
     minSalary: 550,
     name: "",
     phone: "",
+    email: "",
+    password: "",
   },
   register: {
     phone: "",
@@ -4352,28 +4354,27 @@ function renderOnboardingAccount() {
       <div class="input-group">
         <label class="input-label">Ad Soyad</label>
         <input class="input-field ob-input" id="ob-name" type="text" placeholder="Ad Soyad"
-          value="${state.onboarding.name}"
+          autocapitalize="words" value="${state.onboarding.name}"
           oninput="state.onboarding.name=this.value;updateObAccountBtn()">
       </div>
       <div class="input-group">
-        <label class="input-label">Telefon</label>
-        <div class="ob-phone-wrap">
-          <span class="ob-phone-prefix">🇹🇷 +90</span>
-          <input class="input-field ob-phone-input" id="ob-phone" type="tel"
-            placeholder="5XX XXX XX XX" maxlength="14"
-            value="${state.onboarding.phone}"
-            oninput="state.onboarding.phone=this.value;updateObAccountBtn()">
-        </div>
+        <label class="input-label">E-posta</label>
+        <input class="input-field ob-input" id="ob-email" type="email" placeholder="ornek@mail.com"
+          autocomplete="email" value="${state.onboarding.email}"
+          oninput="state.onboarding.email=this.value.trim();updateObAccountBtn()">
       </div>
       <div class="input-group">
-        <label class="input-label" style="color:var(--text-3)">E-posta (opsiyonel)</label>
-        <input class="input-field ob-input" type="email" placeholder="E-posta" style="opacity:.6">
+        <label class="input-label">Şifre</label>
+        <input class="input-field ob-input" id="ob-password" type="password" placeholder="En az 6 karakter"
+          autocomplete="new-password" value="${state.onboarding.password}"
+          oninput="state.onboarding.password=this.value;updateObAccountBtn()">
       </div>
       <p class="ob-legal">Devam ederek <u>Kullanım Koşulları</u> ve <u>Gizlilik Politikası</u>'nı kabul ediyorsun.</p>
     </div>
     <div class="ob-sticky-bottom" style="border-top:none">
       <button class="btn btn-primary btn-full ob-btn" id="ob-account-btn"
-        onclick="go('onboarding-otp')" disabled>Doğrulama Kodu Gönder</button>
+        onclick="submitOnboardingAccount()" disabled>Hesap Oluştur →</button>
+      <div id="ob-account-error" style="color:var(--danger);font-size:13px;text-align:center;margin-top:8px;min-height:20px"></div>
     </div>
   </div>`;
 }
@@ -4538,9 +4539,10 @@ function updateObSalary(val) {
 function updateObAccountBtn() {
   const btn = document.getElementById("ob-account-btn");
   if (!btn) return;
-  const hasName = state.onboarding.name.trim().length > 1;
-  const hasPhone = state.onboarding.phone.replace(/\D/g,"").length >= 10;
-  btn.disabled = !(hasName && hasPhone);
+  const hasName  = state.onboarding.name.trim().length > 1;
+  const hasEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.onboarding.email);
+  const hasPass  = state.onboarding.password.length >= 6;
+  btn.disabled = !(hasName && hasEmail && hasPass);
 }
 
 let _otpResendTimer = null;
@@ -4579,6 +4581,52 @@ function onOtpKey(e, idx) {
   }
 }
 
+async function submitOnboardingAccount() {
+  const btn = document.getElementById("ob-account-btn");
+  const errEl = document.getElementById("ob-account-error");
+  if (btn) { btn.disabled = true; btn.textContent = "Hesap oluşturuluyor…"; }
+  if (errEl) errEl.textContent = "";
+
+  const res = await window.MW.AuthAPI.register({
+    email:      state.onboarding.email,
+    password:   state.onboarding.password,
+    full_name:  state.onboarding.name.trim(),
+    role_label: state.onboarding.categories?.[0] || "",
+  });
+
+  if (!res?.ok && !res?.pending) {
+    if (errEl) errEl.textContent = res?.error || "Kayıt başarısız, tekrar dene";
+    if (btn) { btn.disabled = false; btn.textContent = "Hesap Oluştur →"; }
+    return;
+  }
+
+  // Başarılı — email-sent ekranına yönlendir
+  user.email = state.onboarding.email;
+  go("onboarding-email-sent");
+}
+
+function renderOnboardingEmailSent() {
+  const email = state.onboarding.email || user.email || "e-postanıza";
+  return `<div class="ob-screen" style="justify-content:center;align-items:center;text-align:center;padding:32px 24px">
+    <div style="font-size:56px;margin-bottom:20px">📬</div>
+    <h2 style="font-size:22px;font-weight:800;margin-bottom:10px">E-postanı doğrula</h2>
+    <p style="color:var(--text-2);font-size:14px;line-height:1.6;max-width:300px;margin:0 auto 32px">
+      <strong style="color:var(--text-1)">${email}</strong> adresine doğrulama linki gönderdik.<br><br>
+      Linke tıkladıktan sonra buraya geri gel ve giriş yap.
+    </p>
+    <button class="btn btn-primary btn-full" style="max-width:320px" onclick="go('auth')">
+      Giriş Yap →
+    </button>
+    <button class="btn btn-ghost btn-full" style="max-width:320px;margin-top:10px;font-size:13px;opacity:.6"
+      onclick="go('onboarding-account')">
+      ← Geri dön
+    </button>
+    <p style="color:var(--text-3);font-size:12px;margin-top:24px">
+      Email gelmediyse spam klasörünü kontrol et
+    </p>
+  </div>`;
+}
+
 function finishOnboarding() {
   localStorage.setItem("mw_onboarding_done", "1");
   if (state.onboarding.name.trim()) {
@@ -4591,7 +4639,7 @@ function finishOnboarding() {
 
 function resetOnboarding() {
   localStorage.removeItem("mw_onboarding_done");
-  state.onboarding = { userType:null, categories:[], distance:5, workTypes:["Yarı zamanlı"], minSalary:550, name:"", phone:"" };
+  state.onboarding = { userType:null, categories:[], distance:5, workTypes:["Yarı zamanlı"], minSalary:550, name:"", phone:"", email:"", password:"" };
   go("onboarding-splash");
 }
 
@@ -4609,8 +4657,9 @@ const routes = {
   "onboarding-categories": renderOnboardingCategories,
   "onboarding-prefs":      renderOnboardingPrefs,
   "onboarding-account":    renderOnboardingAccount,
-  "onboarding-otp":        renderOnboardingOTP,
-  "onboarding-success":    renderOnboardingSuccess,
+  "onboarding-otp":          renderOnboardingOTP,
+  "onboarding-success":      renderOnboardingSuccess,
+  "onboarding-email-sent":   renderOnboardingEmailSent,
   auth:          renderAuth,
   home:          renderHome,
   nearby:        renderNearby,
@@ -5416,7 +5465,23 @@ async function doLogin() {
   const res = await window.MW.AuthAPI.login(email, passEl.value);
   if (!res.ok) {
     if (btn) { btn.disabled = false; btn.textContent = "Giriş Yap"; }
-    alert(res.error || "Giriş başarısız");
+    if (res.code === "EMAIL_NOT_CONFIRMED") {
+      // E-posta doğrulanmamış — özel bilgilendirme mesajı
+      const errEl = document.querySelector('.auth-screen .auth-divider') || document.querySelector('.auth-screen .reg-form');
+      dgEncouragementToast("📬 E-posta adresinizi doğrulamanız gerekiyor");
+      setTimeout(() => {
+        const msg = document.createElement("p");
+        msg.style.cssText = "color:var(--warning);font-size:13px;text-align:center;margin-top:10px;line-height:1.5";
+        msg.textContent = "Gelen kutunuzu kontrol edin. Doğrulama linkine tıkladıktan sonra giriş yapabilirsiniz.";
+        const form = document.querySelector('.auth-screen .reg-form');
+        if (form && !form.querySelector('.email-unconfirmed-msg')) {
+          msg.className = "email-unconfirmed-msg";
+          form.appendChild(msg);
+        }
+      }, 100);
+      return;
+    }
+    dgEncouragementToast(res.error || "Giriş başarısız");
     return;
   }
   applyUserProfile(res.profile, email);
@@ -5687,6 +5752,7 @@ Object.assign(window, {
   setSortMode, filterMapJobs, filterMapType, centerMapOnUser,
   doLogin, demoLogin, openChat, onChatTyping,
   sendPhoneOTP, confirmPhoneOTP, submitTCVerify,
+  submitOnboardingAccount,
   toggleDarkMode, doLogout, saveProfile, removeSkill, addSkill,
   markAllRead, markNotifRead, toggleNotifPref,
   togglePrefType, setPrefRadius, filterSwipeDeck,
