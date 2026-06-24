@@ -76,14 +76,40 @@ const state = {
 let _apiJobsLoaded = false;
 
 const user = {
-  name:"Selin Kaya", short:"Selin", initials:"SK",
-  role:"Barista · Satış Danışmanı", location:"Kadıköy, İstanbul",
+  name:"", short:"", initials:"",
+  role:"", location:"",
   matchScore:72, responseRate:"92%", rating:4.8,
-  verified:true, experience:"3 yıl",
-  availability:"Hafta sonu & Hafta içi akşam",
-  skills:["Kahve hazırlama","Kasa kullanımı","Müşteri iletişimi","Ekip çalışması","Ürün bilgisi"],
-  certs:["Barista Sertifikası","Gıda Hijyeni"],
+  verified:false, experience:"",
+  availability:"",
+  skills:[], certs:[],
 };
+
+function applyUserProfile(profile, email) {
+  if (!profile && email) {
+    const raw  = email.split("@")[0].replace(/[._]/g, " ");
+    const name = raw.replace(/\b\w/g, c => c.toUpperCase());
+    user.name     = name;
+    user.short    = name.split(" ")[0];
+    user.initials = name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) || "?";
+    return;
+  }
+  if (!profile) return;
+  if (profile.full_name) {
+    user.name     = profile.full_name;
+    user.short    = profile.short_name || profile.full_name.split(" ")[0];
+    user.initials = profile.initials   || profile.full_name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2);
+  }
+  if (profile.role_label)          user.role         = profile.role_label;
+  if (profile.location)            user.location     = profile.location;
+  if (profile.experience)          user.experience   = profile.experience;
+  if (profile.availability)        user.availability = profile.availability;
+  if (profile.match_score)         user.matchScore   = profile.match_score;
+  if (profile.response_rate)       user.responseRate = profile.response_rate + "%";
+  if (profile.rating)              user.rating       = profile.rating;
+  if (profile.verified != null)    user.verified     = profile.verified;
+  if (profile.skills?.length)      user.skills       = profile.skills;
+  if (profile.certifications?.length) user.certs     = profile.certifications;
+}
 
 let jobs = [
   { id:1, title:"Barista", company:"Cafe Lumiere", initials:"CL",
@@ -5174,14 +5200,16 @@ async function doLogin() {
   const emailEl = document.querySelector('.auth-screen input[type="email"]');
   const passEl  = document.querySelector('.auth-screen input[type="password"]');
   if (!emailEl || !passEl) return;
+  const email = emailEl.value.trim();
   const btn = document.querySelector('.auth-screen .btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = "Giriş yapılıyor..."; }
-  const res = await window.MW.AuthAPI.login(emailEl.value.trim(), passEl.value);
+  const res = await window.MW.AuthAPI.login(email, passEl.value);
   if (!res.ok) {
     if (btn) { btn.disabled = false; btn.textContent = "Giriş Yap"; }
     alert(res.error || "Giriş başarısız");
     return;
   }
+  applyUserProfile(res.profile, email);
   await loadJobsFromAPI();
   window.MW.Socket.connect();
   setTimeout(initSocketListeners, 1000);
