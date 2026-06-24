@@ -15,12 +15,10 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ error: "Email, şifre ve isim zorunlu" });
 
   // signUp() kullan: Supabase otomatik doğrulama emaili gönderir (Resend SMTP üzerinden)
+  // emailRedirectTo yok — Supabase Dashboard'daki Site URL kullanılır
   const { data: authData, error: authError } = await supabaseAnon.auth.signUp({
     email,
     password,
-    options: {
-      emailRedirectTo: (process.env.CLIENT_ORIGIN || "http://localhost:3456").split(",")[0].trim(),
-    },
   });
 
   if (authError) return res.status(400).json({ error: authError.message });
