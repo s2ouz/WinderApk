@@ -77,14 +77,16 @@ let _apiJobsLoaded = false;
 
 const user = {
   name:"", short:"", initials:"",
+  email:"", phone:"",
   role:"", location:"",
   matchScore:72, responseRate:"92%", rating:4.8,
-  verified:false, experience:"",
+  verified:false, tcVerified:false, phoneVerified:false, experience:"",
   availability:"",
   skills:[], certs:[],
 };
 
 function applyUserProfile(profile, email) {
+  if (email) user.email = email;
   if (!profile && email) {
     const raw  = email.split("@")[0].replace(/[._]/g, " ");
     const name = raw.replace(/\b\w/g, c => c.toUpperCase());
@@ -99,6 +101,8 @@ function applyUserProfile(profile, email) {
     user.short    = profile.short_name || profile.full_name.split(" ")[0];
     user.initials = profile.initials   || profile.full_name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2);
   }
+  if (profile.email)               user.email        = profile.email;
+  if (profile.phone)               user.phone        = profile.phone;
   if (profile.role_label)          user.role         = profile.role_label;
   if (profile.location)            user.location     = profile.location;
   if (profile.experience)          user.experience   = profile.experience;
@@ -107,6 +111,8 @@ function applyUserProfile(profile, email) {
   if (profile.response_rate)       user.responseRate = profile.response_rate + "%";
   if (profile.rating)              user.rating       = profile.rating;
   if (profile.verified != null)    user.verified     = profile.verified;
+  if (profile.tc_verified != null) user.tcVerified   = profile.tc_verified;
+  if (profile.phone_verified != null) user.phoneVerified = profile.phone_verified;
   if (profile.skills?.length)      user.skills       = profile.skills;
   if (profile.certifications?.length) user.certs     = profile.certifications;
 }
@@ -3398,18 +3404,134 @@ function renderSettingsProfile() {
 }
 
 function renderSettingsVerify() {
+  const allDone = user.tcVerified && user.phoneVerified;
+  const emailDisplay = user.email || localStorage.getItem("mw_verify_email") || "—";
+  const phoneDisplay = user.phone || localStorage.getItem("mw_verify_phone") || null;
+  const tcVerified   = user.tcVerified   || localStorage.getItem("mw_tc_verified") === "1";
+  const phoneVerified= user.phoneVerified|| localStorage.getItem("mw_phone_verified") === "1";
+
+  const successRow = (label, detail) =>
+    `<div class="settings-row"><div class="settings-row-icon" style="background:var(--success-dim);color:var(--success)">✓</div><div class="settings-row-body"><h3>${label}</h3><p>${detail}</p></div></div>`;
+  const pendingRow = (label, detail, action) =>
+    `<div class="settings-row" onclick="${action}"><div class="settings-row-icon" style="background:var(--surface-3);color:var(--text-3)">◎</div><div class="settings-row-body"><h3>${label}</h3><p>${detail}</p></div><span class="settings-row-right" style="color:var(--primary);font-size:12px;font-weight:600">Doğrula →</span></div>`;
+
   return screen(`
     ${topbar("Kimlik Doğrulama", "settings")}
     <div class="screen-body" style="text-align:center;padding-top:48px">
-      <div style="width:80px;height:80px;border-radius:50%;background:var(--success-dim);display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px">✓</div>
-      <h2 style="font-size:22px;font-weight:800;margin-bottom:8px">Kimliğin Doğrulandı</h2>
-      <p class="body-sm" style="max-width:260px;margin:0 auto 32px;color:var(--text-2)">Kimlik doğrulaman tamamlandı. İşverenler profilinde doğrulama rozetini görebilir.</p>
+      <div style="width:80px;height:80px;border-radius:50%;background:${allDone?"var(--success-dim)":"var(--surface-3)"};display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 20px">
+        ${allDone ? "✓" : "◎"}
+      </div>
+      <h2 style="font-size:22px;font-weight:800;margin-bottom:8px">
+        ${allDone ? "Kimliğin Doğrulandı" : "Kimlik Doğrulama"}
+      </h2>
+      <p class="body-sm" style="max-width:260px;margin:0 auto 32px;color:var(--text-2)">
+        ${allDone
+          ? "Tüm doğrulamalar tamamlandı. İşverenler profilinde rozeti görebilir."
+          : "Güvenliğini artırmak için kimlik bilgilerini doğrula."}
+      </p>
       <div class="settings-group" style="text-align:left">
-        <div class="settings-row"><div class="settings-row-icon" style="background:var(--success-dim);color:var(--success)">✓</div><div class="settings-row-body"><h3>TC Kimlik</h3><p>Doğrulandı · ${new Date().toLocaleDateString('tr-TR')}</p></div></div>
-        <div class="settings-row"><div class="settings-row-icon" style="background:var(--success-dim);color:var(--success)">✓</div><div class="settings-row-body"><h3>E-posta</h3><p>selin@demo.com · Doğrulandı</p></div></div>
-        <div class="settings-row"><div class="settings-row-icon" style="background:var(--surface-3);color:var(--text-3)">◎</div><div class="settings-row-body"><h3>Telefon</h3><p>Henüz doğrulanmadı</p></div><span class="settings-row-right" style="color:var(--primary);font-size:12px">Doğrula</span></div>
+        ${tcVerified
+          ? successRow("TC Kimlik", "Doğrulandı · " + new Date().toLocaleDateString("tr-TR"))
+          : pendingRow("TC Kimlik", "Henüz doğrulanmadı", "go('settings-verify-tc')")}
+        ${successRow("E-posta", emailDisplay + " · Doğrulandı")}
+        ${phoneVerified
+          ? successRow("Telefon", (phoneDisplay || "Doğrulandı") + " · Doğrulandı")
+          : pendingRow("Telefon", phoneDisplay ? phoneDisplay + " · Doğrulanmadı" : "Henüz eklenmedi", "go('settings-verify-phone')")}
       </div>
     </div>`);
+}
+
+function renderSettingsVerifyPhone() {
+  const stored = localStorage.getItem("mw_verify_phone") || "";
+  return screen(`
+    ${topbar("Telefon Doğrulama", "settings-verify")}
+    <div class="screen-body" style="padding:40px 20px">
+      <div style="text-align:center;margin-bottom:32px">
+        <div style="font-size:48px;margin-bottom:12px">📱</div>
+        <h2 style="font-size:20px;font-weight:800">Telefon Numaranı Doğrula</h2>
+        <p class="body-sm" style="color:var(--text-2);margin-top:8px">Numarana SMS ile 6 haneli kod gönderilecek</p>
+      </div>
+      <div id="vp-step1">
+        <input id="vp-phone" class="input-field" type="tel" placeholder="+90 5XX XXX XX XX"
+          value="${stored}" style="margin-bottom:16px">
+        <button class="btn btn-primary btn-full" onclick="sendPhoneOTP()">Kod Gönder →</button>
+      </div>
+      <div id="vp-step2" style="display:none;text-align:center">
+        <p class="body-sm" style="color:var(--text-2);margin-bottom:20px">
+          <span id="vp-sent-num"></span> numarasına SMS gönderildi</p>
+        <input id="vp-otp" class="input-field" type="number" placeholder="● ● ● ● ● ●"
+          style="text-align:center;font-size:28px;letter-spacing:10px;margin-bottom:16px"
+          maxlength="6" oninput="if(this.value.length>=6)confirmPhoneOTP()">
+        <button class="btn btn-primary btn-full" onclick="confirmPhoneOTP()">Doğrula</button>
+        <button class="btn btn-ghost btn-full" style="margin-top:8px;font-size:13px;opacity:.6"
+          onclick="document.getElementById('vp-step2').style.display='none';document.getElementById('vp-step1').style.display='block'">
+          Numarayı değiştir</button>
+      </div>
+    </div>`);
+}
+
+function sendPhoneOTP() {
+  const phone = document.getElementById("vp-phone")?.value?.trim();
+  if (!phone || phone.length < 10) {
+    dgEncouragementToast("Geçerli bir telefon numarası girin");
+    return;
+  }
+  localStorage.setItem("mw_verify_phone", phone);
+  document.getElementById("vp-step1").style.display = "none";
+  document.getElementById("vp-step2").style.display = "block";
+  const sentEl = document.getElementById("vp-sent-num");
+  if (sentEl) sentEl.textContent = phone;
+  dgEncouragementToast("SMS kodu gönderildi");
+}
+
+function confirmPhoneOTP() {
+  const otp = document.getElementById("vp-otp")?.value?.trim();
+  if (!otp || otp.length < 6) {
+    dgEncouragementToast("6 haneli kodu eksiksiz girin");
+    return;
+  }
+  localStorage.setItem("mw_phone_verified", "1");
+  user.phoneVerified = true;
+  dgEncouragementToast("✓ Telefon doğrulandı!");
+  setTimeout(() => go("settings-verify"), 1400);
+}
+
+function renderSettingsVerifyTC() {
+  const tcVerified = user.tcVerified || localStorage.getItem("mw_tc_verified") === "1";
+  if (tcVerified) {
+    return screen(`
+      ${topbar("TC Kimlik Doğrulama", "settings-verify")}
+      <div class="screen-body" style="text-align:center;padding-top:80px">
+        <div style="font-size:56px;margin-bottom:16px">✓</div>
+        <h2 style="font-size:22px;font-weight:800">TC Kimlik Doğrulandı</h2>
+        <p class="body-sm" style="color:var(--text-2);margin-top:8px">Kimlik bilgilerin kayıtlıdır.</p>
+      </div>`);
+  }
+  return screen(`
+    ${topbar("TC Kimlik Doğrulama", "settings-verify")}
+    <div class="screen-body" style="padding:40px 20px">
+      <div style="text-align:center;margin-bottom:32px">
+        <div style="font-size:48px;margin-bottom:12px">🪪</div>
+        <h2 style="font-size:20px;font-weight:800">TC Kimlik Numarası</h2>
+        <p class="body-sm" style="color:var(--text-2);margin-top:8px">Bilgiler şifreli olarak saklanır, üçüncü şahıslarla paylaşılmaz.</p>
+      </div>
+      <input id="vtc-no" class="input-field" type="number" placeholder="TC Kimlik Numarası (11 hane)"
+        style="margin-bottom:12px" maxlength="11">
+      <input id="vtc-name" class="input-field" type="text" placeholder="Ad Soyad (kimlikte yazan)"
+        style="margin-bottom:16px">
+      <button class="btn btn-primary btn-full" onclick="submitTCVerify()">Doğrula</button>
+    </div>`);
+}
+
+function submitTCVerify() {
+  const no   = document.getElementById("vtc-no")?.value?.trim();
+  const name = document.getElementById("vtc-name")?.value?.trim();
+  if (!no || no.length !== 11) { dgEncouragementToast("TC Kimlik numarası 11 hane olmalı"); return; }
+  if (!name || name.length < 4) { dgEncouragementToast("Ad Soyad alanını doldurun"); return; }
+  localStorage.setItem("mw_tc_verified", "1");
+  user.tcVerified = true;
+  dgEncouragementToast("✓ TC Kimlik doğrulandı!");
+  setTimeout(() => go("settings-verify"), 1400);
 }
 
 function renderSettingsNotifs() {
@@ -4505,8 +4627,10 @@ const routes = {
   navigation:         renderNavigation,
   result:             renderResult,
   "settings-profile": renderSettingsProfile,
-  "settings-verify":  renderSettingsVerify,
-  "settings-notifs":  renderSettingsNotifs,
+  "settings-verify":       renderSettingsVerify,
+  "settings-verify-phone": renderSettingsVerifyPhone,
+  "settings-verify-tc":    renderSettingsVerifyTC,
+  "settings-notifs":       renderSettingsNotifs,
   "settings-prefs":   renderSettingsPrefs,
   "settings-location":renderSettingsLocation,
   "settings-about":   renderSettingsAbout,
@@ -5476,6 +5600,7 @@ Object.assign(window, {
   setMapRouteMode, setMapTypeFilter, filterMapSearch, applyMapFilters,
   setSortMode, filterMapJobs, filterMapType, centerMapOnUser,
   doLogin, demoLogin, openChat, onChatTyping,
+  sendPhoneOTP, confirmPhoneOTP, submitTCVerify,
   toggleDarkMode, doLogout, saveProfile, removeSkill, addSkill,
   markAllRead, markNotifRead, toggleNotifPref,
   togglePrefType, setPrefRadius, filterSwipeDeck,
