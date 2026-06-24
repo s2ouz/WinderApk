@@ -11,6 +11,8 @@ const server = http.createServer(app);
 // ─── CORS ─────────────────────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_ORIGIN || "http://localhost:3456",
+  "http://localhost:4173",
+  "http://127.0.0.1:4173",
   "null",          // file:// kaynağı
 ];
 app.use(cors({
@@ -106,6 +108,41 @@ io.on("connection", (socket) => {
   });
   socket.on("typing:stop", ({ matchId }) => {
     socket.to(`match:${matchId}`).emit("typing:stop", { userId: socket.userId });
+  });
+
+  // WebRTC çağrı sinyalleri. Ses/görüntü sunucudan geçmez; yalnızca
+  // bağlantıyı kuran offer/answer/ICE paketleri eşleşme odasına iletilir.
+  socket.on("call:start", ({ matchId, type, offer, caller }) => {
+    if (!matchId || !offer || !["audio", "video"].includes(type)) return;
+    const room = `match:${matchId}`;
+    const peers = io.sockets.adapter.rooms.get(room);
+    if (!peers || peers.size < 2) {
+      socket.emit("call:unavailable", { matchId, reason:"offline" });
+      return;
+    }
+    socket.to(room).emit("call:incoming", {
+      matchId, type, offer, caller, from:socket.id,
+    });
+  });
+
+  socket.on("call:accept", ({ matchId, answer }) => {
+    if (!matchId || !answer) return;
+    socket.to(`match:${matchId}`).emit("call:accepted", { matchId, answer, from:socket.id });
+  });
+
+  socket.on("call:ice", ({ matchId, candidate }) => {
+    if (!matchId || !candidate) return;
+    socket.to(`match:${matchId}`).emit("call:ice", { matchId, candidate, from:socket.id });
+  });
+
+  socket.on("call:reject", ({ matchId, reason="rejected" }) => {
+    if (!matchId) return;
+    socket.to(`match:${matchId}`).emit("call:rejected", { matchId, reason });
+  });
+
+  socket.on("call:end", ({ matchId }) => {
+    if (!matchId) return;
+    socket.to(`match:${matchId}`).emit("call:ended", { matchId });
   });
 
   // Bağlantı koptu

@@ -1,4 +1,4 @@
-const CACHE_NAME = "matchwork-pwa-v1";
+const CACHE_NAME = "matchwork-pwa-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -27,17 +27,29 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
 
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
+  const url = new URL(event.request.url);
+  const isAppCode = url.origin === self.location.origin &&
+    (event.request.mode === "navigate" || ["script", "style"].includes(event.request.destination));
 
-      return fetch(event.request)
+  // Uygulama kodunda önce ağı dene; böylece yeni JS/CSS eski PWA cache'ine takılmaz.
+  if (isAppCode) {
+    event.respondWith(
+      fetch(event.request)
         .then(response => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
           return response;
         })
-        .catch(() => caches.match("./index.html"));
-    })
+        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+      return response;
+    }))
   );
 });

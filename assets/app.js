@@ -56,6 +56,20 @@ const state = {
   pfWorkStyles: ["flexible","evening","teamwork"],
   pfInterests: ["Yeme-İçme","Perakende","Hizmet"],
   nfTab: 0,
+  navDir:   null,
+  navStack: [],
+  discovery: {
+    weekStart:           null,
+    weekViewed:          0,
+    weekLiked:           0,
+    weekActivity:        [0,0,0,0,0,0,0],
+    streakDays:          0,
+    streakLastDate:      null,
+    milestones:          [],
+    viewedIds:           [],
+    shownEncouragements: [],
+    sessionSwiped:       0,
+  },
 };
 
 /* ─── DATA ───────────────────────────────────────────────────────── */
@@ -234,7 +248,58 @@ function currentRoute() {
   return location.hash.replace(/^#\/?/, "") || "auth";
 }
 function go(route) {
+  const cur = currentRoute();
+  if (cur === route) return;
+  const tabSet = new Set(navRoutes);
+  if (tabSet.has(cur) && tabSet.has(route)) {
+    const ci = navRoutes.indexOf(cur), ni = navRoutes.indexOf(route);
+    state.navDir = ni > ci ? "right" : "left";
+  } else if (!tabSet.has(route)) {
+    state.navDir = "up";
+  } else {
+    state.navDir = "fade";
+  }
+  mlBounceNavIcon(route);
   location.hash = route;
+}
+
+function triggerHaptic(pattern) {
+  navigator.vibrate?.(pattern);
+}
+
+function mlBounceNavIcon(route) {
+  const btn = document.querySelector(`.nav-item[onclick="go('${route}')"]`);
+  if (!btn) return;
+  const ico = btn.querySelector("i");
+  if (!ico) return;
+  ico.style.animation = "none";
+  requestAnimationFrame(() => {
+    ico.style.animation = "";
+    btn.classList.remove("ml-bounce");
+    requestAnimationFrame(() => btn.classList.add("ml-bounce"));
+  });
+  setTimeout(() => btn.classList.remove("ml-bounce"), 500);
+}
+
+function mlParticles(originEl, color = "#6C4EFF", count = 8) {
+  const rect = originEl.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const container = document.body;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement("div");
+    p.className = "ml-particle";
+    const angle = (i / count) * Math.PI * 2;
+    const dist = 40 + Math.random() * 40;
+    const px = Math.cos(angle) * dist;
+    const py = Math.sin(angle) * dist - 20;
+    const dur = (.5 + Math.random() * .3).toFixed(2);
+    const delay = (Math.random() * .12).toFixed(2);
+    p.style.cssText = `left:${cx - 4}px;top:${cy - 4}px;background:${color};` +
+      `--ml-px:${px.toFixed(0)}px;--ml-py:${py.toFixed(0)}px;--ml-dur:${dur}s;--ml-delay:${delay}s;z-index:9999;`;
+    container.appendChild(p);
+    setTimeout(() => p.remove(), (parseFloat(dur) + parseFloat(delay)) * 1000 + 50);
+  }
 }
 
 /* ─── HELPERS ────────────────────────────────────────────────────── */
@@ -577,6 +642,8 @@ function renderHome() {
         <span>Kadıköy'de bugün <strong>${jobs.length} fırsat</strong> seni bekliyor</span>
         <span class="home-pulse-arr">→</span>
       </button>
+
+      ${dgHomeWidget()}
 
       ${heroCard(hero)}
 
@@ -1126,7 +1193,12 @@ function discoverCard(job, slot) {
 function renderCardDeck() {
   const deck  = buildDiscoverDeck();
   const total = deck.length;
-  if (!total || state.swipe.deckIndex >= total) return discoverEmptyState();
+  if (!total) {
+    return state.swipe.deckFilter
+      ? filterEmptyState(state.swipe.deckFilter)
+      : discoverEmptyState();
+  }
+  if (state.swipe.deckIndex >= total) return discoverEmptyState();
   const cards = [];
   for (let i = Math.min(2, total - 1 - state.swipe.deckIndex); i >= 0; i--) {
     cards.push(discoverCard(deck[state.swipe.deckIndex + i], i));
@@ -1134,18 +1206,363 @@ function renderCardDeck() {
   return cards.join("");
 }
 
-function discoverEmptyState() {
-  return `<div class="dc-empty">
-    <div class="dc-empty-icon">✦</div>
-    <h2 class="dc-empty-title">Tüm fırsatları gördün!</h2>
-    <p class="dc-empty-sub">Bu oturumda <strong>${state.swipe.likedIds.length}</strong> ilana ilgi gösterdin.</p>
-    <div class="dc-empty-stats">
-      <div class="dc-es"><strong>${state.swipe.likedIds.length}</strong><span>Beğeni</span></div>
-      <div class="dc-es"><strong>${state.swipe.skippedIds.length}</strong><span>Geçilen</span></div>
+/* ─── EMPTY & SUCCESS STATES ────────────────────────────────────── */
+
+function esHtml({ tag = "", illu = "", title, sub, actions = [], tip = "", extra = "" }) {
+  return `<div class="es">
+    ${tag  ? `<div class="es-tag">${tag}</div>` : ""}
+    ${illu ? `<div class="es-illu">${illu}</div>` : ""}
+    <h2 class="es-title">${title}</h2>
+    <p class="es-sub">${sub}</p>
+    ${extra}
+    <div class="es-actions">
+      ${actions.map(a => `<button class="btn ${a.style || "btn-primary"}" onclick="${a.fn}">${a.label}</button>`).join("")}
     </div>
-    <button class="btn btn-primary" style="margin-top:20px;height:48px;padding:0 32px" onclick="resetDeck()">Yeniden Keşfet</button>
-    <button class="btn btn-ghost" style="margin-top:8px" onclick="go('nearby')">Haritada Gör →</button>
+    ${tip ? `<p class="es-tip">${tip}</p>` : ""}
   </div>`;
+}
+
+const ES_SVG = {
+  compass: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="50" fill="rgba(108,78,255,.07)"/>
+    <circle cx="60" cy="60" r="36" fill="rgba(108,78,255,.13)" stroke="rgba(108,78,255,.22)" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <circle cx="60" cy="60" r="5" fill="#6C4EFF"/>
+    <path d="M60 30 L67 54 L60 60 L53 54Z" fill="#6C4EFF" opacity=".9"/>
+    <path d="M60 90 L53 66 L60 60 L67 66Z" fill="rgba(108,78,255,.32)"/>
+    <circle cx="60" cy="60" r="2.5" fill="white"/>
+    <circle cx="19" cy="42" r="3.5" fill="rgba(34,197,94,.55)"/>
+    <circle cx="99" cy="55" r="2.5" fill="rgba(245,158,11,.55)"/>
+    <circle cx="88" cy="94" r="4" fill="rgba(108,78,255,.3)"/>
+  </svg>`,
+
+  puzzle: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="14" y="36" width="38" height="38" rx="8" fill="rgba(108,78,255,.15)" stroke="rgba(108,78,255,.38)" stroke-width="1.5"/>
+    <path d="M52 55 C52 55 58 48 64 55 C58 62 52 55 52 55Z" fill="rgba(108,78,255,.15)" stroke="rgba(108,78,255,.38)" stroke-width="1.5"/>
+    <rect x="68" y="36" width="38" height="38" rx="8" fill="rgba(245,158,11,.12)" stroke="rgba(245,158,11,.38)" stroke-width="1.5"/>
+    <path d="M68 55 C68 55 62 62 56 55 C62 48 68 55 68 55Z" fill="rgba(245,158,11,.12)" stroke="rgba(245,158,11,.38)" stroke-width="1.5"/>
+    <circle cx="33" cy="55" r="5" fill="rgba(108,78,255,.45)"/>
+    <circle cx="87" cy="55" r="5" fill="rgba(245,158,11,.45)"/>
+    <path d="M54 84 L66 84" stroke="rgba(108,78,255,.2)" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 3"/>
+  </svg>`,
+
+  bubble: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="10" y="20" width="70" height="50" rx="16" fill="rgba(108,78,255,.12)" stroke="rgba(108,78,255,.28)" stroke-width="1.5"/>
+    <path d="M20 70 L12 88 L38 76" fill="rgba(108,78,255,.12)" stroke="rgba(108,78,255,.28)" stroke-width="1.5" stroke-linejoin="round"/>
+    <rect x="46" y="52" width="62" height="44" rx="14" fill="rgba(34,197,94,.09)" stroke="rgba(34,197,94,.24)" stroke-width="1.5"/>
+    <path d="M96 96 L104 112 L80 100" fill="rgba(34,197,94,.09)" stroke="rgba(34,197,94,.24)" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="32" cy="45" r="3.5" fill="rgba(108,78,255,.38)"/>
+    <circle cx="45" cy="45" r="3.5" fill="rgba(108,78,255,.38)"/>
+    <circle cx="58" cy="45" r="3.5" fill="rgba(108,78,255,.38)"/>
+  </svg>`,
+
+  bell: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="50" fill="rgba(108,78,255,.06)"/>
+    <path d="M60 18 C43 18 31 32 31 50 L31 68 L22 78 L98 78 L89 68 L89 50 C89 32 77 18 60 18Z" fill="rgba(108,78,255,.15)" stroke="rgba(108,78,255,.32)" stroke-width="1.5"/>
+    <path d="M51 78 Q51 88 60 88 Q69 88 69 78" stroke="rgba(108,78,255,.45)" stroke-width="1.5" fill="none"/>
+    <text x="76" y="46" font-size="12" fill="rgba(108,78,255,.5)" font-family="system-ui,sans-serif" font-weight="600">z</text>
+    <text x="85" y="36" font-size="10" fill="rgba(108,78,255,.38)" font-family="system-ui,sans-serif" font-weight="600">z</text>
+    <text x="93" y="27" font-size="8"  fill="rgba(108,78,255,.26)" font-family="system-ui,sans-serif" font-weight="600">z</text>
+  </svg>`,
+
+  person: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="38" r="24" fill="rgba(108,78,255,.12)" stroke="rgba(108,78,255,.28)" stroke-width="1.5" stroke-dasharray="6 3"/>
+    <path d="M22 100 C22 78 38 66 60 66 C82 66 98 78 98 100" stroke="rgba(108,78,255,.28)" stroke-width="1.5" fill="rgba(108,78,255,.07)" stroke-dasharray="6 3"/>
+    <circle cx="86" cy="26" r="13" fill="rgba(245,158,11,.18)" stroke="rgba(245,158,11,.45)" stroke-width="1.5"/>
+    <path d="M86 20 L86 30 M86 33 L86 34" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
+  </svg>`,
+
+  search: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="30" fill="rgba(108,78,255,.09)" stroke="rgba(108,78,255,.28)" stroke-width="2"/>
+    <line x1="71" y1="71" x2="96" y2="96" stroke="rgba(108,78,255,.38)" stroke-width="3" stroke-linecap="round"/>
+    <line x1="40" y1="41" x2="60" y2="59" stroke="rgba(239,68,68,.65)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="60" y1="41" x2="40" y2="59" stroke="rgba(239,68,68,.65)" stroke-width="2.5" stroke-linecap="round"/>
+  </svg>`,
+
+  wifi: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="64" r="50" fill="rgba(239,68,68,.06)"/>
+    <path d="M18 46 Q60 20 102 46" stroke="rgba(239,68,68,.18)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M30 60 Q60 40 90 60" stroke="rgba(239,68,68,.32)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M42 74 Q60 62 78 74" stroke="rgba(239,68,68,.5)" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <circle cx="60" cy="88" r="4.5" fill="rgba(239,68,68,.7)"/>
+    <line x1="44" y1="24" x2="68" y2="24" stroke="rgba(239,68,68,.55)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="56" y1="14" x2="56" y2="34" stroke="rgba(239,68,68,.55)" stroke-width="2.5" stroke-linecap="round"/>
+  </svg>`,
+
+  heart: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="60" cy="60" r="50" fill="rgba(34,197,94,.07)"/>
+    <path d="M60 82 C60 82 28 62 28 42 C28 31 37 24 46 24 C52 24 57 28 60 33 C63 28 68 24 74 24 C83 24 92 31 92 42 C92 62 60 82 60 82Z" fill="rgba(34,197,94,.22)" stroke="rgba(34,197,94,.55)" stroke-width="1.5"/>
+    <circle cx="26" cy="26" r="4" fill="rgba(245,158,11,.55)"/>
+    <circle cx="94" cy="22" r="3" fill="rgba(108,78,255,.5)"/>
+    <circle cx="97" cy="90" r="5" fill="rgba(34,197,94,.38)"/>
+    <circle cx="18" cy="82" r="3" fill="rgba(245,158,11,.38)"/>
+    <path d="M52 48 L68 48 M52 57 L62 57" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity=".5"/>
+  </svg>`,
+
+  chat: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="10" y="18" width="76" height="60" rx="18" fill="rgba(108,78,255,.11)" stroke="rgba(108,78,255,.28)" stroke-width="1.5"/>
+    <path d="M20 78 L12 100 L48 82" fill="rgba(108,78,255,.11)" stroke="rgba(108,78,255,.28)" stroke-width="1.5" stroke-linejoin="round"/>
+    <rect x="26" y="38" width="44" height="5" rx="2.5" fill="rgba(108,78,255,.3)"/>
+    <rect x="26" y="51" width="28" height="5" rx="2.5" fill="rgba(108,78,255,.2)"/>
+    <circle cx="94" cy="88" r="20" fill="rgba(34,197,94,.14)" stroke="rgba(34,197,94,.32)" stroke-width="1.5"/>
+    <text x="94" y="95" text-anchor="middle" font-size="18" fill="rgba(34,197,94,.85)">👋</text>
+  </svg>`,
+
+  calendar: `<svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="12" y="24" width="96" height="84" rx="14" fill="rgba(108,78,255,.09)" stroke="rgba(108,78,255,.28)" stroke-width="1.5"/>
+    <rect x="12" y="24" width="96" height="30" rx="14" fill="rgba(108,78,255,.18)"/>
+    <rect x="12" y="40" width="96" height="14" fill="rgba(108,78,255,.18)"/>
+    <circle cx="38" cy="18" r="6" fill="none" stroke="rgba(108,78,255,.48)" stroke-width="2"/>
+    <line x1="38" y1="12" x2="38" y2="24" stroke="rgba(108,78,255,.48)" stroke-width="2"/>
+    <circle cx="82" cy="18" r="6" fill="none" stroke="rgba(108,78,255,.48)" stroke-width="2"/>
+    <line x1="82" y1="12" x2="82" y2="24" stroke="rgba(108,78,255,.48)" stroke-width="2"/>
+    <path d="M36 76 L50 90 L84 60" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="ml-check-path"/>
+  </svg>`,
+};
+
+/* 1. Discover — all cards swiped */
+function discoverEmptyState() {
+  const liked   = state.swipe.likedIds.length;
+  const skipped = state.swipe.skippedIds.length;
+  const total   = liked + skipped;
+  const rate    = total > 0 ? Math.round(liked / total * 100) : 0;
+  return esHtml({
+    tag: "✦ Oturum Tamamlandı",
+    illu: ES_SVG.compass,
+    title: "Çevrendeki tüm fırsatları gördün",
+    sub: `Bu oturumda <strong>${liked}</strong> ilana ilgi gösterdin. Yeni ilanlar her gün ekleniyor.`,
+    extra: `<div class="es-stat-row">
+      <div class="es-stat"><strong>${liked}</strong><span>İlgi</span></div>
+      <div class="es-stat-div"></div>
+      <div class="es-stat"><strong>${skipped}</strong><span>Geçilen</span></div>
+      <div class="es-stat-div"></div>
+      <div class="es-stat"><strong>${rate}%</strong><span>Beğeni Oranı</span></div>
+    </div>`,
+    actions: [
+      { label: "Yeniden Keşfet", fn: "resetDeck()", style: "btn-primary" },
+      { label: "Haritada Ara →",  fn: "go('nearby')", style: "btn-ghost"  },
+    ],
+    tip: "💡 Profil fotoğrafı ekleyenler %60 daha fazla ilgi alıyor",
+  });
+}
+
+/* 2. Filter returned 0 results */
+function filterEmptyState(filterLabel) {
+  return esHtml({
+    illu: ES_SVG.search,
+    title: `"${filterLabel}" için ilan bulunamadı`,
+    sub: "Farklı bir kategori dene veya filtreyi kaldırarak tüm ilanları gör.",
+    actions: [
+      { label: "Filtreyi Temizle", fn: "filterSwipeDeck(null,'')", style: "btn-primary" },
+    ],
+  });
+}
+
+/* 3. No Messages */
+function messagesEmptyState() {
+  return esHtml({
+    tag: "💬 Henüz Mesaj Yok",
+    illu: ES_SVG.bubble,
+    title: "Mesaj kutun boş",
+    sub: "Eşleşme oluştuktan sonra iş yerleriyle doğrudan mesajlaşabilirsin. İlk adımı sen at.",
+    actions: [
+      { label: "İlan Keşfet",       fn: "go('discover')", style: "btn-primary" },
+      { label: "Eşleşmelerime Bak →", fn: "go('matches')", style: "btn-ghost"  },
+    ],
+    tip: "💡 Eşleşme oluştuktan sonra ilk 24 saat içinde mesaj atanların görüşmeye geçme oranı %78",
+  });
+}
+
+/* 4. No Notifications */
+function nfEmptyState() {
+  return esHtml({
+    tag: "🔔 Sessiz Bir Gün",
+    illu: ES_SVG.bell,
+    title: "Henüz bildirim yok",
+    sub: "Yeni ilan, eşleşme veya mesaj geldiğinde burada anında görünecek.",
+    actions: [
+      { label: "İlan Keşfet", fn: "go('discover')", style: "btn-primary" },
+    ],
+    tip: "💡 Profil fotoğrafı ekleyenler %60 daha fazla ilgi alıyor",
+  });
+}
+
+/* 5. Profile incomplete banner (injected at top of profile body) */
+function pfIncompleteBanner(score) {
+  if (score >= 85) return "";
+  const missing = PF_STRENGTH_SEGS.filter(s => s.pct < 80).map(s => s.label);
+  const circ    = 2 * Math.PI * 18;
+  const fill    = (score / 100 * circ).toFixed(1);
+  return `<div class="es-profile-banner">
+    <div class="es-pb-top">
+      <div class="es-pb-score">
+        <div class="es-pb-ring">
+          <svg width="44" height="44" viewBox="0 0 44 44">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="var(--surface-2)" stroke-width="3"/>
+            <circle cx="22" cy="22" r="18" fill="none" stroke="#6C4EFF" stroke-width="3"
+              stroke-dasharray="${fill} ${circ.toFixed(1)}" stroke-dashoffset="${(circ * 0.25).toFixed(1)}"
+              stroke-linecap="round" transform="rotate(-90 22 22)"/>
+          </svg>
+          <span class="es-pb-pct">${score}%</span>
+        </div>
+        <div>
+          <div class="es-pb-title">Profil Gücü</div>
+          <div class="es-pb-sub">${score < 60 ? "Zayıf · Eşleşme oranı düşük" : "Orta · İyileştirilebilir"}</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="height:36px;font-size:13px;padding:0 16px;flex-shrink:0" onclick="go('settings-profile')">Tamamla</button>
+    </div>
+    ${missing.length ? `<div class="es-pb-missing">Eksik: ${missing.map(m => `<span class="es-pb-chip">${m}</span>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+/* 6–10 below — matches tabs, chat, interview, offline, match celebration */
+
+function mcEmptyState(tab) {
+  const configs = [
+    { tag:"✦ İlk Eşleşme", illu:ES_SVG.puzzle,
+      title:"İlk eşleşmen yakın",
+      sub:"Beğendiğin bir yer de seni beğenince eşleşme oluşur. Keşfet ekranından ilgi göster.",
+      actions:[
+        {label:"İlan Keşfet",          fn:"go('discover')", style:"btn-primary"},
+        {label:"Profili Güçlendir →",  fn:"go('profile')",  style:"btn-ghost"},
+      ],
+      tip:"💡 Eşleşme oranı yüksek profiller 3× daha hızlı eşleşiyor" },
+
+    { tag:"💬 Aktif Sohbet Yok", illu:ES_SVG.bubble,
+      title:"Konuşma henüz başlamadı",
+      sub:"Yeni eşleşmene ilk mesajı sen gönder. Hızlı yanıt veren adaylar görüşmeye 4× daha sık davet ediliyor.",
+      actions:[
+        {label:"Eşleşmelerime Git", fn:"setMCTab(0)", style:"btn-primary"},
+      ],
+      tip:"💡 İlk 24 saatte mesaj atanların %78'i görüşmeye davet ediliyor" },
+
+    { tag:"📅 Görüşme Bekleniyor", illu:ES_SVG.calendar,
+      title:"Henüz görüşme daveti yok",
+      sub:"Aktif konuşmalarında ilerleme sağlandıkça görüşme davetleri burada görünecek.",
+      actions:[
+        {label:"Aktif Konuşmalar", fn:"setMCTab(1)", style:"btn-primary"},
+      ],
+      tip:"💡 3 mesajın ardından görüşme teklifi alma ihtimali %65 artıyor" },
+
+    { tag:"🏆 İşe Alım", illu:ES_SVG.heart,
+      title:"Henüz işe alınmadın",
+      sub:"Her görüşme değerli bir deneyim. İpucu: görüşme sonrası teşekkür mesajı gönderenler 2× daha çok işe alınıyor.",
+      actions:[
+        {label:"Görüşmelerime Git", fn:"setMCTab(2)", style:"btn-primary"},
+      ],
+      tip:"💡 Görüşme sonrası mesaj atanların işe alınma oranı 2× yüksek" },
+
+    { tag:"☆ Kaydedilenler", illu:ES_SVG.compass,
+      title:"Kaydedilen ilan yok",
+      sub:"Kart kaydırırken yukarı kaydır ↑ veya ilan detayında kaydet butonuna bas.",
+      actions:[
+        {label:"İlan Keşfet", fn:"go('discover')", style:"btn-primary"},
+      ],
+      tip:"" },
+  ];
+  return esHtml(configs[tab] || configs[0]);
+}
+
+/* 8. First Match — enhanced celebration */
+function matchCelebrationHtml(job) {
+  const isFirst = state.swipe.likedIds.length === 1;
+  return `<div class="ss">
+    <div class="ss-confetti" id="ss-confetti"></div>
+    <div class="ss-ring-wrap ml-success-ring">
+      <svg width="110" height="110" viewBox="0 0 110 110" fill="none">
+        <circle cx="55" cy="55" r="48" fill="rgba(34,197,94,.1)" stroke="rgba(34,197,94,.3)" stroke-width="1.5"/>
+        <circle cx="55" cy="55" r="32" fill="rgba(34,197,94,.15)" stroke="rgba(34,197,94,.45)" stroke-width="2"/>
+        <text x="55" y="64" text-anchor="middle" font-size="28" fill="rgba(34,197,94,.9)">✦</text>
+      </svg>
+    </div>
+    ${isFirst ? `<div class="es-tag ss-tag">🎉 İlk Eşleşmen!</div>` : `<div class="es-tag ss-tag">✦ Yeni Eşleşme</div>`}
+    <h1 class="ss-title">${job ? job.company : "İşveren"} seni seçti</h1>
+    <p class="ss-sub">${job ? `<strong>${job.title}</strong> pozisyonu için mesajlaşmaya başlayabilirsin.` : "Tebrikler! Karşılıklı ilgi oluştu."}</p>
+    ${isFirst ? `<div class="ss-first-steps">
+      <div class="ss-fs-hdr">Sıradaki adımlar</div>
+      <div class="ss-fs-item"><span class="ss-fs-num">1</span>İlk mesajı gönder — samimi ve kısa tut</div>
+      <div class="ss-fs-item"><span class="ss-fs-num">2</span>İlanı tekrar oku, pozisyonu anla</div>
+      <div class="ss-fs-item"><span class="ss-fs-num">3</span>Görüşme daveti bekle</div>
+    </div>` : ""}
+    <div class="es-actions" style="margin-top:20px">
+      <button class="btn btn-primary" onclick="go('messages')">Mesaj Gönder</button>
+      <button class="btn btn-ghost"   onclick="go('discover')">Keşfetmeye Devam Et</button>
+    </div>
+  </div>`;
+}
+
+/* 9. First Conversation */
+function chatEmptyState(companyName) {
+  const starters = [
+    "Merhaba! Mesajınızı aldım, çok heyecanlandım. Ne zaman müsaitsiniz?",
+    "İyi günler. Pozisyon hakkında birkaç sorum olacak, uygun bir zaman var mı?",
+    "Merhaba, ilginiz için teşekkürler! Detayları konuşmak isterim.",
+  ];
+  return `<div class="es es-chat-empty">
+    <div class="es-illu">${ES_SVG.chat}</div>
+    <h2 class="es-title">${companyName} seni seçti!</h2>
+    <p class="es-sub">İlk mesajla iyi bir izlenim bırak. Kısa, samimi ve özgüvenli yaz.</p>
+    <div class="es-starters">
+      <div class="es-starters-hdr">Hazır Başlangıç Mesajları</div>
+      ${starters.map(s => `<button class="es-starter-btn" onclick="useStarterMessage(this)">${s}</button>`).join("")}
+    </div>
+  </div>`;
+}
+
+/* 10. Interview confirmed */
+function interviewSuccessHtml(opts = {}) {
+  const { company = "Şirket", time = "Yarın 14:00", format = "Yüz yüze", address = "Kadıköy, İstanbul" } = opts;
+  const circ = 2 * Math.PI * 32;
+  return `<div class="ss">
+    <div class="ss-check ml-success-ring">
+      <svg width="90" height="90" viewBox="0 0 90 90" fill="none">
+        <circle cx="45" cy="45" r="38" fill="rgba(34,197,94,.1)" stroke="rgba(34,197,94,.35)" stroke-width="2"/>
+        <path d="M27 45 L38 56 L63 30" stroke="#22c55e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="ml-check-path"/>
+      </svg>
+    </div>
+    <div class="es-tag ss-tag">🎉 Görüşme Onaylandı</div>
+    <h1 class="ss-title">${company} ile görüşmen hazır!</h1>
+    <p class="ss-sub">Görüşme detaylarını kaydet ve hazırlığını erkenden tamamla.</p>
+    <div class="ss-detail-card">
+      <div class="ss-detail-row"><span class="ss-detail-ico">📅</span><span>${time}</span></div>
+      <div class="ss-detail-row"><span class="ss-detail-ico">📍</span><span>${address}</span></div>
+      <div class="ss-detail-row"><span class="ss-detail-ico">💬</span><span>${format}</span></div>
+    </div>
+    <div class="es-actions">
+      <button class="btn btn-primary" onclick="go('matches')">Hazırlık İpuçlarını Gör</button>
+      <button class="btn btn-ghost"   onclick="go('nearby')">Yol Tarifi →</button>
+    </div>
+    <div class="ss-next-steps">
+      <div class="ss-ns-hdr">Görüşme Öncesi Kontrol Listesi</div>
+      <div class="ss-ns-item"><span class="ss-ns-dot"></span>Şirketi araştır (web sitesi, sosyal medya)</div>
+      <div class="ss-ns-item"><span class="ss-ns-dot"></span>Sık sorulan soruları hazırla</div>
+      <div class="ss-ns-item"><span class="ss-ns-dot"></span>Konuma 10 dakika erken git</div>
+      <div class="ss-ns-item"><span class="ss-ns-dot"></span>Görüşme sonrası teşekkür mesajı gönder</div>
+    </div>
+  </div>`;
+}
+
+/* Offline state */
+function offlineState() {
+  return esHtml({
+    illu: ES_SVG.wifi,
+    title: "Bağlantı kesildi",
+    sub: "İnternet erişimi yok. Wi-Fi veya mobil verini kontrol et ve tekrar dene.",
+    actions: [
+      { label: "Tekrar Dene", fn: "location.reload()", style: "btn-primary" },
+    ],
+    tip: "Bağlantı kesildiğinde Keşfet ekranındaki kartlar çevrimdışı çalışmaya devam eder",
+  });
+}
+
+function useStarterMessage(btn) {
+  const inp = document.getElementById("chat-input");
+  if (inp) {
+    inp.value = btn.textContent.trim();
+    inp.focus();
+    const emptyEl = document.querySelector(".es-chat-empty");
+    if (emptyEl) emptyEl.style.display = "none";
+  }
 }
 
 function quickBrowseCard(job) {
@@ -1184,6 +1601,7 @@ function showLikeExplosion() {
   ex.innerHTML = Array.from({length: 7}, (_, i) =>
     `<div class="dc-lh" style="--i:${i}">♥</div>`).join("");
   stage.appendChild(ex);
+  mlParticles(ex, "#22c55e", 10);
   setTimeout(() => ex.remove(), 900);
 }
 
@@ -1256,6 +1674,8 @@ function renderDiscover() {
       <div class="dc-chips" id="dc-filter-chips">
         ${cats.map(c => `<div class="chip${filter === c.val ? " active" : ""}" onclick="filterSwipeDeck(this,'${c.val}')">${c.label}</div>`).join("")}
       </div>
+
+      ${dgDiscoverHeader()}
 
       <div class="dc-stage${state.speedMode ? " dc-speed-mode" : ""}" id="dc-stage">
         <div class="card-deck" id="card-deck">${renderCardDeck()}</div>
@@ -1644,28 +2064,13 @@ function renderJobDetail() {
 /* MATCH CELEBRATION */
 function renderMatch() {
   const last = state.swipe.lastAction;
-  const job = last ? last.job : jobs[0];
-  return screen(`
-    <div class="match-celebrate anim-fade-in">
-      <div class="confetti-ring">
-        <div class="confetti-inner"><div class="emoji">✦</div></div>
-      </div>
-      <h1 class="h1" style="margin-bottom:8px">Yeni Eşleşme!</h1>
-      <p style="font-size:16px;color:var(--text-2);margin-bottom:6px">
-        <strong style="color:var(--text-1)">${job ? job.company : "İşveren"}</strong> seni beğendi
-      </p>
-      <p class="body-sm" style="margin-bottom:32px;max-width:260px">
-        ${job ? `${job.title} pozisyonu için mesajlaşmaya başlayabilirsin.` : ""}
-      </p>
-      <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:280px">
-        <button class="btn btn-primary btn-full" onclick="go('messages')">
-          ${icon("ti-message-circle")} Mesaj Gönder
-        </button>
-        <button class="btn btn-ghost btn-full" onclick="go('discover')">
-          Keşfetmeye Devam Et
-        </button>
-      </div>
-    </div>`);
+  const job  = last ? last.job : jobs[0];
+  const html = screen(matchCelebrationHtml(job));
+  requestAnimationFrame(() => {
+    const ring = document.querySelector(".ss-ring-wrap") || document.querySelector(".ss-check");
+    if (ring) mlParticles(ring, "#22c55e", 14);
+  });
+  return html;
 }
 
 /* ─── NOTIFICATIONS v2 ─── */
@@ -1860,6 +2265,7 @@ function nfGroupHtml(label, items) {
 }
 
 function nfBodyContent(tab) {
+  if (!NF_FEED.length) return nfEmptyState();
   if (tab === 1) {
     return nfDigestCardHtml() +
       NF_FEED.map((n, i) => nfItemHtml(n, i)).join("");
@@ -1867,9 +2273,10 @@ function nfBodyContent(tab) {
   const today     = NF_FEED.filter(n => n.group === "today");
   const yesterday = NF_FEED.filter(n => n.group === "yesterday");
   const week      = NF_FEED.filter(n => n.group === "week");
-  return nfGroupHtml("Bugün", today) +
+  const body = nfGroupHtml("Bugün", today) +
     nfGroupHtml("Dün", yesterday) +
     nfGroupHtml("Bu Hafta", week);
+  return body || nfEmptyState();
 }
 
 function setNFTab(tab) {
@@ -2056,22 +2463,6 @@ function mcSavedContent() {
     </div>`;
 }
 
-function mcEmptyState(tab) {
-  const msgs = [
-    {icon:"✦",title:"Henüz eşleşme yok",      sub:"Keşfet ekranından ilgilendiğin işlere beğeni gönder.",route:"discover",cta:"Keşfete Git"},
-    {icon:"💬",title:"Konuşma başlamadı",       sub:"Yeni eşleşmelerine mesaj gönder, konuşma başlat.", route:"matches", cta:"Eşleşmelere Dön"},
-    {icon:"📅",title:"Görüşme daveti yok",     sub:"Aktif konuşmalarını ilerletince davetler gelecek.", route:"matches", cta:"Mesajlarıma Git"},
-    {icon:"🏆",title:"Henüz işe alınmadın",    sub:"Her görüşme seni bir adım daha yaklaştırıyor.",     route:"matches", cta:"Görüşmelerime Git"},
-    {icon:"☆", title:"Kaydedilen ilan yok",     sub:"Kart kaydırırken ↑ yukarı kaydırarak ilanları kaydet.",route:"discover",cta:"Keşfete Git"},
-  ];
-  const m = msgs[tab] || msgs[0];
-  return `<div class="mc-empty">
-    <div class="mc-empty-icon">${m.icon}</div>
-    <h3 class="mc-empty-title">${m.title}</h3>
-    <p class="mc-empty-sub">${m.sub}</p>
-    <button class="btn btn-primary" onclick="go('${m.route}')" style="margin-top:16px">${m.cta}</button>
-  </div>`;
-}
 
 function mcBodyContent(tab) {
   if (tab === 4) return mcSavedContent();
@@ -2194,7 +2585,7 @@ function renderMessages() {
   return screen(`
     ${topbar("Mesajlar")}
     <div class="screen-body">
-      ${cards || '<p style="text-align:center;color:var(--text-3);margin-top:60px">Henüz eşleşme yok.</p>'}
+      ${cards || messagesEmptyState()}
     </div>`, bottomNav("messages"));
 }
 
@@ -2350,9 +2741,16 @@ function renderChat() {
         <div class="ch-ctx-name">${mc.name}</div>
         <div class="ch-ctx-sub" id="chat-status">${statusTxt}</div>
       </div>
-      <div class="ch-ctx-right">
-        <span class="ch-score-pill" style="color:${jdScoreColor(mc.score)}">${mc.score}%</span>
-        <button class="ch-ctx-job" onclick="openJob(${mc.jobId||1},'chat')" title="İlanı Gör">📋</button>
+      <div class="ch-call-actions">
+        <button class="ch-call-btn" onclick="startChatCall('audio')" title="Sesli arama" aria-label="Sesli arama">
+          ${callIcon("phone")}
+        </button>
+        <button class="ch-call-btn" onclick="startChatCall('video')" title="Görüntülü arama" aria-label="Görüntülü arama">
+          ${callIcon("video")}
+        </button>
+        <button class="ch-call-btn ch-job-btn" onclick="openJob(${mc.jobId||1},'chat')" title="İlanı gör" aria-label="İlanı gör">
+          ${callIcon("briefcase")}
+        </button>
       </div>
     </div>
 
@@ -2379,8 +2777,8 @@ function renderChat() {
 
     <div class="ch-thread" id="messages-list">
       <div class="ch-sys">✦ ${mc.name} seninle eşleşti</div>
-      ${bubbles.join("")}
-      ${ivCardHtml}
+      ${bubbles.length === 0 ? chatEmptyState(mc.name) : bubbles.join("")}
+      ${bubbles.length > 0 ? ivCardHtml : ""}
     </div>
 
     <div class="ch-qr-bar" id="ch-qr-bar">
@@ -2412,6 +2810,221 @@ function renderChat() {
         </button>
       </div>
     </div>`);
+}
+
+/* CHAT CALLS — WebRTC media, Socket.IO signaling */
+let _callSession = null;
+let _callTimer = null;
+let _callListenersReady = false;
+
+function callIcon(name, size = 19) {
+  const paths = {
+    phone:'<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z"/>',
+    video:'<rect x="3" y="5" width="13" height="14" rx="2"/><path d="m16 10 5-3v10l-5-3"/>',
+    briefcase:'<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V4h8v3M3 12h18M10 12v2h4v-2"/>',
+    mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/>',
+    micOff:'<path d="m2 2 20 20M9 9v1a3 3 0 0 0 4.7 2.5M15 9.3V5a3 3 0 0 0-5.6-1.5M17 16.7A7 7 0 0 0 19 10M5 10a7 7 0 0 0 11.7 5.2M12 19v3"/>',
+    videoOff:'<path d="m2 2 20 20M10.7 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-1.7M18 9l3-2v10l-3-2M14 5h2a2 2 0 0 1 2 2v2"/>',
+    speaker:'<path d="M11 5 6 9H2v6h4l5 4V5ZM15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12"/>',
+    hangup:'<path d="M4 15.5c4.8-4.2 11.2-4.2 16 0M7 13l-2 4M17 13l2 4"/>',
+  };
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.phone}</svg>`;
+}
+
+function getCallMatchId() {
+  return state.chatMatchId || `demo-job-${getChatCtx().jobId || 1}`;
+}
+
+function callStatusText(status, type) {
+  const kind = type === "video" ? "görüntülü" : "sesli";
+  return {
+    requesting:"Kamera ve mikrofon izni bekleniyor…",
+    calling:`${kind[0].toUpperCase()+kind.slice(1)} arama yapılıyor…`,
+    incoming:`Gelen ${kind} arama`,
+    connecting:"Bağlanıyor…",
+    active:"00:00",
+    unavailable:"Şu anda ulaşılamıyor",
+    rejected:"Arama reddedildi",
+    ended:"Görüşme sona erdi",
+    failed:"Bağlantı kurulamadı",
+  }[status] || "Arama hazırlanıyor…";
+}
+
+function mountCallOverlay(status) {
+  if (!_callSession) return;
+  _callSession.status = status;
+  const mc = getChatCtx();
+  const person = !_callSession.isCaller && _callSession.caller
+    ? { name:_callSession.caller.name || "Matchwork kullanıcısı", initials:_callSession.caller.initials || "MW" }
+    : mc;
+  let overlay = document.getElementById("ch-call-overlay");
+  if (!overlay) {
+    overlay = document.createElement("section");
+    overlay.id = "ch-call-overlay";
+    document.querySelector(".screen")?.appendChild(overlay);
+  }
+  const incoming = status === "incoming";
+  const video = _callSession.type === "video";
+  overlay.className = `ch-call-overlay${video ? " ch-call-video" : " ch-call-audio"}`;
+  overlay.innerHTML = `
+    <video class="ch-call-remote" id="ch-call-remote" autoplay playsinline></video>
+    ${video ? '<video class="ch-call-local" id="ch-call-local" autoplay playsinline muted></video>' : ""}
+    <div class="ch-call-shade"></div>
+    <div class="ch-call-person">
+      <div class="ch-call-avatar">${person.initials}</div>
+      <h2>${person.name}</h2>
+      <p id="ch-call-status">${callStatusText(status, _callSession.type)}</p>
+    </div>
+    <div class="ch-call-controls">
+      ${incoming ? `
+        <button class="ch-call-control ch-call-decline" onclick="rejectIncomingCall()">${callIcon("hangup",24)}<span>Reddet</span></button>
+        <button class="ch-call-control ch-call-accept" onclick="acceptIncomingCall()">${callIcon(video?"video":"phone",24)}<span>Kabul Et</span></button>
+      ` : `
+        <button class="ch-call-control" id="ch-mute-btn" onclick="toggleCallMute()">${callIcon("mic",22)}<span>Sessiz</span></button>
+        ${video ? `<button class="ch-call-control" id="ch-camera-btn" onclick="toggleCallCamera()">${callIcon("video",22)}<span>Kamera</span></button>` : `<button class="ch-call-control">${callIcon("speaker",22)}<span>Hoparlör</span></button>`}
+        <button class="ch-call-control ch-call-decline" onclick="endChatCall()">${callIcon("hangup",24)}<span>Bitir</span></button>
+      `}
+    </div>`;
+  attachCallMedia();
+}
+
+function attachCallMedia() {
+  if (!_callSession) return;
+  const remote = document.getElementById("ch-call-remote");
+  const local = document.getElementById("ch-call-local");
+  if (remote && _callSession.remoteStream) remote.srcObject = _callSession.remoteStream;
+  if (local && _callSession.localStream) local.srcObject = _callSession.localStream;
+}
+
+async function getCallMedia(type) {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("unsupported");
+  return navigator.mediaDevices.getUserMedia({
+    audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true },
+    video:type === "video" ? { facingMode:"user", width:{ideal:1280}, height:{ideal:720} } : false,
+  });
+}
+
+function createCallPeer() {
+  const pc = new RTCPeerConnection({ iceServers:[{ urls:"stun:stun.l.google.com:19302" }] });
+  _callSession.pc = pc;
+  _callSession.remoteStream = new MediaStream();
+  _callSession.localStream?.getTracks().forEach(track => pc.addTrack(track, _callSession.localStream));
+  pc.ontrack = event => {
+    event.streams[0]?.getTracks().forEach(track => {
+      if (!_callSession.remoteStream.getTracks().some(t => t.id === track.id)) _callSession.remoteStream.addTrack(track);
+    });
+    attachCallMedia();
+  };
+  pc.onicecandidate = event => {
+    if (event.candidate) window.MW?.Socket.sendIce(_callSession.matchId, event.candidate);
+  };
+  pc.onconnectionstatechange = () => {
+    if (!_callSession || pc !== _callSession.pc) return;
+    if (pc.connectionState === "connected") activateChatCall();
+    if (["failed","disconnected"].includes(pc.connectionState)) finishChatCall("failed", false);
+  };
+  return pc;
+}
+
+async function startChatCall(type) {
+  if (_callSession) return;
+  if (!window.MW?.Socket.connected) {
+    dgEncouragementToast("Arama sunucusuna bağlanılamadı");
+    return;
+  }
+  _callSession = { type, matchId:getCallMatchId(), isCaller:true, status:"requesting", pendingIce:[], startedAt:null };
+  mountCallOverlay("requesting");
+  try {
+    _callSession.localStream = await getCallMedia(type);
+    const pc = createCallPeer();
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    window.MW.Socket.startCall({ matchId:_callSession.matchId, type, offer, caller:{ name:user.name, initials:user.initials } });
+    mountCallOverlay("calling");
+  } catch (error) {
+    finishChatCall(error?.name === "NotAllowedError" ? "permission" : "failed", false);
+  }
+}
+
+async function acceptIncomingCall() {
+  if (!_callSession?.offer) return;
+  mountCallOverlay("requesting");
+  try {
+    _callSession.localStream = await getCallMedia(_callSession.type);
+    const pc = createCallPeer();
+    await pc.setRemoteDescription(_callSession.offer);
+    await flushCallIce();
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    window.MW.Socket.acceptCall(_callSession.matchId, answer);
+    mountCallOverlay("connecting");
+  } catch (error) {
+    window.MW?.Socket.rejectCall(_callSession.matchId, "media-error");
+    finishChatCall(error?.name === "NotAllowedError" ? "permission" : "failed", false);
+  }
+}
+
+function rejectIncomingCall() {
+  if (!_callSession) return;
+  window.MW?.Socket.rejectCall(_callSession.matchId, "rejected");
+  finishChatCall("ended", false, 0);
+}
+
+async function flushCallIce() {
+  if (!_callSession?.pc?.remoteDescription) return;
+  for (const candidate of _callSession.pendingIce.splice(0)) {
+    try { await _callSession.pc.addIceCandidate(candidate); } catch (_) {}
+  }
+}
+
+function activateChatCall() {
+  if (!_callSession || _callSession.status === "active") return;
+  _callSession.startedAt = Date.now();
+  mountCallOverlay("active");
+  clearInterval(_callTimer);
+  _callTimer = setInterval(() => {
+    const el = document.getElementById("ch-call-status");
+    if (!el || !_callSession?.startedAt) return;
+    const secs = Math.floor((Date.now() - _callSession.startedAt) / 1000);
+    el.textContent = `${String(Math.floor(secs/60)).padStart(2,"0")}:${String(secs%60).padStart(2,"0")}`;
+  }, 1000);
+}
+
+function toggleCallMute() {
+  if (!_callSession?.localStream) return;
+  _callSession.muted = !_callSession.muted;
+  _callSession.localStream.getAudioTracks().forEach(t => t.enabled = !_callSession.muted);
+  const btn = document.getElementById("ch-mute-btn");
+  if (btn) { btn.classList.toggle("is-off", _callSession.muted); btn.innerHTML = `${callIcon(_callSession.muted?"micOff":"mic",22)}<span>${_callSession.muted?"Sesi Aç":"Sessiz"}</span>`; }
+}
+
+function toggleCallCamera() {
+  if (!_callSession?.localStream) return;
+  _callSession.cameraOff = !_callSession.cameraOff;
+  _callSession.localStream.getVideoTracks().forEach(t => t.enabled = !_callSession.cameraOff);
+  const btn = document.getElementById("ch-camera-btn");
+  if (btn) { btn.classList.toggle("is-off", _callSession.cameraOff); btn.innerHTML = `${callIcon(_callSession.cameraOff?"videoOff":"video",22)}<span>${_callSession.cameraOff?"Kamerayı Aç":"Kamera"}</span>`; }
+}
+
+function endChatCall() {
+  if (!_callSession) return;
+  window.MW?.Socket.endCall(_callSession.matchId);
+  finishChatCall("ended", false);
+}
+
+function finishChatCall(status="ended", notify=false, delay=1100) {
+  if (!_callSession) return;
+  if (notify) window.MW?.Socket.endCall(_callSession.matchId);
+  _callSession.localStream?.getTracks().forEach(t => t.stop());
+  _callSession.remoteStream?.getTracks().forEach(t => t.stop());
+  _callSession.pc?.close();
+  clearInterval(_callTimer);
+  _callTimer = null;
+  const el = document.getElementById("ch-call-status");
+  if (el) el.textContent = status === "permission" ? "Mikrofon/kamera izni verilmedi" : callStatusText(status, _callSession.type);
+  const overlay = document.getElementById("ch-call-overlay");
+  const old = _callSession;
+  setTimeout(() => { if (_callSession === old) { _callSession = null; overlay?.remove(); } }, delay);
 }
 
 /* ─── PROFILE v2 ─── */
@@ -2688,6 +3301,7 @@ function renderProfile() {
           title="${s.label} · ${s.pct}%"></div>`).join("")}
     </div>
     <div class="pf-body">
+      ${pfIncompleteBanner(pfOverallScore())}
       ${pfStrengthHtml()}
       ${pfSkillsHtml()}
       ${pfTimelineHtml()}
@@ -2923,44 +3537,100 @@ function renderNavigation() {
   const job = jobs.find(j => String(j.id) === String(state.detailJobId)) || jobs[0];
   const t = job.travel || { walk:15, bus:6, car:4 };
   const modes = [
-    { key:"walk", icon:"♟", label:"Yürüyerek", time:`${t.walk} dk` },
-    { key:"bus",  icon:"▣", label:"Otobüs",    time:`${t.bus} dk`  },
-    { key:"car",  icon:"◈", label:"Araba",     time:`${t.car} dk`  },
+    { key:"walk", label:"Yürüyerek", time:`${t.walk} dk` },
+    { key:"bus",  label:"Otobüs",    time:`${t.bus} dk`  },
+    { key:"car",  label:"Araba",     time:`${t.car} dk`  },
   ];
+  const selected = modes.find(m => m.key === state.dirMode) || modes[0];
   return screen(`
-    ${topbar("Yol Tarifi", "job-detail")}
-    <div class="directions-map">
-      <div class="dir-grid"></div>
-      <div class="route-visual">
-        <div class="route-dots">
-          <div class="route-start"></div>
-          <div class="route-line-v"></div>
-          <div class="route-end"></div>
-        </div>
+    <div class="directions-head">
+      ${topbar("Yol Tarifi", "job-detail")}
+      <div class="dir-journey" aria-label="Rota özeti">
+        <div class="dir-place"><span class="dir-place-dot current"></span><span>Mevcut konum</span></div>
+        <span class="dir-journey-arrow">→</span>
+        <div class="dir-place dir-place-destination"><span class="dir-place-dot destination"></span><span>${job.company}</span></div>
       </div>
-      <div class="map-user" style="left:50%;top:60%">
+    </div>
+    <div class="directions-map">
+      <svg class="dir-map-art" viewBox="0 0 390 470" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <pattern id="dir-blocks" width="74" height="64" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
+            <path d="M0 8H74M15 0V64M52 0V64" fill="none" stroke="rgba(124,133,162,.10)" stroke-width="1"/>
+            <rect x="19" y="13" width="28" height="18" rx="2" fill="rgba(124,133,162,.035)"/>
+            <rect x="20" y="37" width="48" height="18" rx="2" fill="rgba(124,133,162,.025)"/>
+          </pattern>
+          <filter id="route-glow" x="-50%" y="-20%" width="200%" height="140%">
+            <feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <linearGradient id="route-color" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0" stop-color="#6C4EFF"/><stop offset=".75" stop-color="#765BFF"/><stop offset="1" stop-color="#22C55E"/>
+          </linearGradient>
+        </defs>
+        <rect width="390" height="470" fill="#0A0F1D"/>
+        <rect width="390" height="470" fill="url(#dir-blocks)"/>
+        <g class="dir-roads" fill="none" stroke-linecap="round">
+          <path d="M-30 115C63 92 116 106 190 78S320 39 430 72"/>
+          <path d="M-24 348C70 318 120 346 190 308S318 250 421 268"/>
+          <path d="M50 -25C61 72 90 132 72 226S42 385 66 500"/>
+          <path d="M308 -30C280 88 310 155 285 245S238 384 264 500"/>
+          <path d="M-20 228C94 210 132 235 210 205S329 158 415 178"/>
+        </g>
+        <g class="dir-districts">
+          <text x="28" y="84">ACIBADEM</text><text x="283" y="112">FENERYOLU</text>
+          <text x="28" y="292">KOZYATAĞI</text><text x="276" y="326">HASANPAŞA</text>
+          <text x="276" y="424">EĞİTİM</text>
+        </g>
+        <path class="dir-route-glow" d="M202 405C190 353 202 330 185 292S222 224 226 180S190 146 209 94"/>
+        <path class="dir-route-line" d="M202 405C190 353 202 330 185 292S222 224 226 180S190 146 209 94"/>
+      </svg>
+      <div class="dir-turn-cue"><strong>↑</strong><span><b>350 m</b> ileride sağa dön</span></div>
+      <div class="dir-destination" style="left:53.6%;top:18%">
+        <div class="dir-destination-pin"><b>${job.initials}</b></div>
+        <span>${job.company}</span>
+      </div>
+      <div class="map-user dir-user" style="left:51.8%;top:83%">
         <div class="user-ring"></div>
         <div class="user-dot"></div>
-      </div>
-      <div class="map-pin pin-high" style="left:48%;top:30%">
-        <div class="pin-bubble">${job.initials}</div>
-        <div class="pin-tail"></div>
+        <span>Mevcut konum</span>
       </div>
     </div>
     <div class="directions-panel">
-      <div>
-        <h3 style="font-size:15px;font-weight:700">${job.company}</h3>
-        <p class="body-sm">${job.location || "Kadıköy, İstanbul"}</p>
+      <div class="dir-sheet-handle"></div>
+      <div class="dir-panel-title">
+        <div><h3>${job.company}</h3><p>${job.location || "Kadıköy, İstanbul"}</p></div>
+        <span class="dir-mode-badge">${selected.time}</span>
       </div>
+      <div class="dir-route-meta"><span>${navModeIcon(state.dirMode, 15)} ${job.distance || "1,1"} km</span><i></i><span>${selected.time}</span><i></i><span class="dir-traffic"><b></b>Trafik normal</span></div>
       <div class="directions-options">
         ${modes.map(m => `
-          <div class="dir-option${state.dirMode===m.key?" active":""}" onclick="setDirMode('${m.key}')">
-            <span class="dicon">${m.icon}</span>
+          <button class="dir-option${state.dirMode===m.key?" active":""}" onclick="setDirMode('${m.key}')" aria-pressed="${state.dirMode===m.key}">
+            <span class="dicon">${navModeIcon(m.key)}</span>
             <span class="dtime">${m.time}</span>
             <span class="dlabel">${m.label}</span>
-          </div>`).join("")}
+          </button>`).join("")}
       </div>
+      <button class="dir-start-btn" onclick="startDirections()">${navModeIcon("navigate", 18)}<span>Yolculuğu Başlat</span></button>
+      <button class="dir-open-btn" onclick="openExternalDirections('${encodeURIComponent(job.company)}')">Haritada Aç</button>
     </div>`);
+}
+
+function navModeIcon(mode, size = 22) {
+  const paths = {
+    walk: '<path d="M13 5.2a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 4.2ZM9.7 21l1.1-5.3 2.2-2.2 1.5 2.1V21m-7.2-8.4 2.1-4.2c.5-1 1.5-1.5 2.6-1.3l2.6.5 2.2 3.2 3.2 1.1m-10.5.5 3.3 2.7m-5.5 5.9 2.4-4.5"/>',
+    bus: '<rect x="5" y="2" width="14" height="18" rx="3"/><path d="M5 8h14M8 16h.01M16 16h.01M7 22v-2m10 2v-2"/>',
+    car: '<path d="M4 11l2-5h12l2 5m-16 0h16v8H4zM7 15h.01M17 15h.01M6 19v2m12-2v2"/>',
+    navigate: '<path d="m3 11 18-8-8 18-2.5-7.5L3 11Z"/>'
+  };
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[mode] || paths.walk}</svg>`;
+}
+
+function startDirections() {
+  triggerHaptic?.(35);
+  dgEncouragementToast("Rota hazır · Güvenli yolculuklar");
+}
+
+function openExternalDirections(destination) {
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${destination}`, "_blank", "noopener,noreferrer");
 }
 
 /* RESULT */
@@ -3827,10 +4497,17 @@ function render() {
   const route = currentRoute();
   const fn = routes[route] || renderHome;
   document.getElementById("app").innerHTML = fn();
+  const screenEl = document.querySelector(".screen");
+  if (screenEl && state.navDir) {
+    screenEl.classList.add(`ml-enter-${state.navDir}`);
+    state.navDir = null;
+  }
   if (route === "discover") initSwipeListeners();
   if (route === "chat") {
     const list = document.getElementById("messages-list");
     if (list) list.scrollTop = list.scrollHeight;
+    window.MW?.Socket.joinMatch(getCallMatchId());
+    if (_callSession) mountCallOverlay(_callSession.status);
   }
   if (route === "messages") {
     requestAnimationFrame(() => loadMatchesList());
@@ -3942,7 +4619,12 @@ function onDragMove(e) {
   }
   if (absDx >= SWIPE_THRESHOLD && !sw.thresholdReached) {
     sw.thresholdReached = true;
-    navigator.vibrate?.(12);
+    triggerHaptic(12);
+    sw.activeCard.classList.add(dx > 0 ? "dc-at-threshold-r" : "dc-at-threshold-l");
+  }
+  if (absDx < SWIPE_THRESHOLD && sw.thresholdReached) {
+    sw.thresholdReached = false;
+    sw.activeCard.classList.remove("dc-at-threshold-r", "dc-at-threshold-l");
   }
 }
 
@@ -3970,29 +4652,36 @@ function onDragEnd() {
 
 function snapBack(card) {
   if (!card) return;
-  card.style.transition = "transform .4s cubic-bezier(.34,1.56,.64,1)";
+  card.classList.remove("dc-at-threshold-r", "dc-at-threshold-l", "dc-at-threshold-u");
+  card.style.transition = "transform .45s cubic-bezier(.34,1.56,.64,1), box-shadow .2s";
   card.style.transform = "translateX(0) rotate(0deg) translateY(0) scale(1)";
   const likeOl = document.getElementById("like-ol");
   const passOl = document.getElementById("pass-ol");
   const detOl  = document.getElementById("detail-ol");
   [likeOl, passOl, detOl].forEach(el => { if (el) el.style.opacity = "0"; });
-  setTimeout(() => { card.style.transition = "none"; }, 400);
+  setTimeout(() => { card.style.transition = "none"; }, 450);
 }
 
 function animateCardOut(card, dir, callback) {
+  card.classList.remove("dc-at-threshold-r", "dc-at-threshold-l", "dc-at-threshold-u");
   const flyX = dir === "right" ? window.innerWidth + 300 : -(window.innerWidth + 300);
-  const rot  = dir === "right" ? 30 : -30;
-  card.style.transition = "transform .42s cubic-bezier(.25,.46,.45,.94), opacity .35s";
+  const rot  = dir === "right" ? 32 : -32;
+  card.style.transition = "transform .38s cubic-bezier(.25,.46,.45,.94), opacity .3s, box-shadow .15s";
   card.style.transform  = `translateX(${flyX}px) rotate(${rot}deg)`;
   card.style.opacity    = "0";
+  card.style.boxShadow  = "none";
   playSwipeSound(dir);
-  setTimeout(callback, 400);
+  if (dir === "right") triggerHaptic([15, 20, 60]);
+  else triggerHaptic(8);
+  setTimeout(callback, 380);
 }
 
 function commitSwipe(dir) {
   const job = currentSwipeJob();
   if (!job) return;
   state.swipe.lastAction = { direction:dir, job, deckIndex:state.swipe.deckIndex };
+  dgRecordView(job.id);
+  dgRecordSwipe(dir);
   if (window.MW?.Auth.isLoggedIn()) {
     window.MW.JobsAPI.swipe(job.id, dir).catch(() => {});
   }
@@ -4297,7 +4986,11 @@ function filterSwipeDeck(btn, tag) {
   state.swipe.deckFilter = tag;
   state.swipe.deckIndex  = 0;
   document.querySelectorAll("#dc-filter-chips .chip").forEach(c => c.classList.remove("active"));
-  btn.classList.add("active");
+  if (btn) btn.classList.add("active");
+  else {
+    const allChip = document.querySelector("#dc-filter-chips .chip");
+    if (allChip) allChip.classList.add("active");
+  }
   const deckEl = document.getElementById("card-deck");
   if (deckEl) { deckEl.innerHTML = renderCardDeck(); initSwipeListeners(); }
   updateDeckInfo();
@@ -4362,7 +5055,8 @@ async function loadMatchesList() {
 }
 
 function initSocketListeners() {
-  if (!window.MW?.Socket.connected) return;
+  if (!window.MW?.Socket || _callListenersReady) return;
+  _callListenersReady = true;
 
   window.MW.Socket.onMessage(msg => {
     if (msg.match_id !== state.chatMatchId) return;
@@ -4383,6 +5077,47 @@ function initSocketListeners() {
     state.chatTyping = false;
     const el = document.getElementById("chat-status");
     if (el) el.textContent = "● Çevrimiçi";
+  });
+
+  window.MW.Socket.onIncomingCall(payload => {
+    if (_callSession) {
+      window.MW.Socket.rejectCall(payload.matchId, "busy");
+      return;
+    }
+    _callSession = {
+      type:payload.type, matchId:payload.matchId, offer:payload.offer,
+      caller:payload.caller, isCaller:false, status:"incoming", pendingIce:[], startedAt:null,
+    };
+    triggerHaptic?.([180,80,180]);
+    mountCallOverlay("incoming");
+  });
+
+  window.MW.Socket.onCallAccepted(async ({ matchId, answer }) => {
+    if (!_callSession?.isCaller || _callSession.matchId !== matchId) return;
+    try {
+      await _callSession.pc.setRemoteDescription(answer);
+      await flushCallIce();
+      mountCallOverlay("connecting");
+    } catch (_) { finishChatCall("failed", false); }
+  });
+
+  window.MW.Socket.onCallIce(async ({ matchId, candidate }) => {
+    if (!_callSession || _callSession.matchId !== matchId) return;
+    if (!_callSession.pc?.remoteDescription) _callSession.pendingIce.push(candidate);
+    else try { await _callSession.pc.addIceCandidate(candidate); } catch (_) {}
+  });
+
+  window.MW.Socket.onCallRejected(({ matchId, reason }) => {
+    if (_callSession?.matchId !== matchId) return;
+    finishChatCall(reason === "busy" ? "unavailable" : "rejected", false);
+  });
+
+  window.MW.Socket.onCallEnded(({ matchId }) => {
+    if (_callSession?.matchId === matchId) finishChatCall("ended", false);
+  });
+
+  window.MW.Socket.onCallUnavailable(({ matchId }) => {
+    if (_callSession?.matchId === matchId) finishChatCall("unavailable", false, 1500);
   });
 }
 
@@ -4462,10 +5197,229 @@ function demoLogin() {
   go('home');
 }
 
+/* ─── DISCOVERY GAMIFICATION ─────────────────────────────────────── */
+
+const DG_WEEKLY_GOAL = 15;
+
+const DG_MILESTONES = [
+  { key:"first_like",   test: d => d.weekLiked  >= 1,  label:"İlk ilgin gönderildi",      sub:"Keşfin başladı." },
+  { key:"five_likes",   test: d => d.weekLiked  >= 5,  label:"Bu hafta 5 ilgi",            sub:"Güçlü bir başlangıç." },
+  { key:"ten_views",    test: d => d.weekViewed >= 10, label:"10 fırsat incelendi",         sub:"Alanı geniş tutuyorsun." },
+  { key:"goal_reached", test: d => d.weekViewed >= 15, label:"Haftalık hedef tamamlandı",   sub:"Bu hafta 15 fırsat keşfettin." },
+  { key:"streak_3",     test: d => d.streakDays >= 3,  label:"3 günlük keşif serisi",      sub:"Tutarlılık güç." },
+  { key:"streak_7",     test: d => d.streakDays >= 7,  label:"7 günlük keşif serisi",      sub:"Haftanın her günü aktifsin." },
+];
+
+const DG_ENCOURAGEMENTS = [
+  { trigger:1,  dir:"any",   msg:"İyi başlangıç — çevrende fırsatlar var." },
+  { trigger:3,  dir:"any",   msg:"Momentum yakaladın." },
+  { trigger:5,  dir:"right", msg:"Bu hafta 5 fırsat için ilgin kaydedildi." },
+  { trigger:10, dir:"any",   msg:"10 fırsat incelendi — sana daha iyi öneriler geliyor." },
+  { trigger:15, dir:"any",   msg:"Haftalık hedefe ulaştın. Harika." },
+];
+
+function dgIsoDate(d = new Date()) {
+  return d.toISOString().slice(0, 10);
+}
+
+function dgWeekStart(d = new Date()) {
+  const dt  = new Date(d);
+  const dow = dt.getDay();
+  dt.setDate(dt.getDate() - (dow === 0 ? 6 : dow - 1));
+  return dgIsoDate(dt);
+}
+
+function dgDayIndex() {
+  const dow = new Date().getDay();
+  return dow === 0 ? 6 : dow - 1;
+}
+
+function dgLoad() {
+  try {
+    const raw = localStorage.getItem("mw_discovery");
+    if (!raw) return;
+    Object.assign(state.discovery, JSON.parse(raw));
+  } catch(e) {}
+}
+
+function dgSave() {
+  try {
+    localStorage.setItem("mw_discovery", JSON.stringify(state.discovery));
+  } catch(e) {}
+}
+
+function dgCheckWeekReset() {
+  const d = state.discovery;
+  const thisWeek = dgWeekStart();
+  if (d.weekStart !== thisWeek) {
+    d.weekStart    = thisWeek;
+    d.weekViewed   = 0;
+    d.weekLiked    = 0;
+    d.weekActivity = [0,0,0,0,0,0,0];
+    d.viewedIds    = [];
+    dgSave();
+  }
+}
+
+function dgUpdateStreak() {
+  const d     = state.discovery;
+  const today = dgIsoDate();
+  if (d.streakLastDate === today) return;
+  if (!d.streakLastDate) {
+    d.streakDays     = 1;
+    d.streakLastDate = today;
+    dgSave();
+    return;
+  }
+  const diffDay = Math.round((new Date(today) - new Date(d.streakLastDate)) / 86400000);
+  d.streakDays     = diffDay === 1 ? (d.streakDays || 0) + 1 : 1;
+  d.streakLastDate = today;
+  dgSave();
+}
+
+function dgRecordView(jobId) {
+  const d = state.discovery;
+  if (!d.viewedIds) d.viewedIds = [];
+  if (d.viewedIds.includes(jobId)) return;
+  d.viewedIds.push(jobId);
+  d.weekViewed = (d.weekViewed || 0) + 1;
+  d.sessionSwiped = (d.sessionSwiped || 0) + 1;
+  if (!d.weekActivity) d.weekActivity = [0,0,0,0,0,0,0];
+  d.weekActivity[dgDayIndex()] = (d.weekActivity[dgDayIndex()] || 0) + 1;
+  dgSave();
+}
+
+function dgRecordSwipe(dir) {
+  const d = state.discovery;
+  if (dir === "right") d.weekLiked = (d.weekLiked || 0) + 1;
+  dgUpdateStreak();
+  dgSave();
+  dgCheckMilestones();
+  // Smart encouragement — fire once per trigger
+  const enc = DG_ENCOURAGEMENTS.find(e =>
+    (d.weekViewed === e.trigger || d.weekLiked === e.trigger) &&
+    (e.dir === "any" || e.dir === dir)
+  );
+  if (enc) {
+    if (!d.shownEncouragements) d.shownEncouragements = [];
+    const key = `${enc.trigger}:${enc.dir}`;
+    if (!d.shownEncouragements.includes(key)) {
+      d.shownEncouragements.push(key);
+      dgSave();
+      setTimeout(() => dgEncouragementToast(enc.msg), 900);
+    }
+  }
+}
+
+function dgCheckMilestones() {
+  const d = state.discovery;
+  if (!d.milestones) d.milestones = [];
+  DG_MILESTONES.forEach(m => {
+    if (!d.milestones.includes(m.key) && m.test(d)) {
+      d.milestones.push(m.key);
+      dgSave();
+      setTimeout(() => dgMilestoneToast(m), 1400);
+    }
+  });
+}
+
+function dgEncouragementToast(msg) {
+  const el = document.createElement("div");
+  el.className = "dg-encourage-toast";
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("dg-et-in"));
+  setTimeout(() => {
+    el.classList.remove("dg-et-in");
+    setTimeout(() => el.remove(), 400);
+  }, 3500);
+}
+
+function dgMilestoneToast(milestone) {
+  const el = document.createElement("div");
+  el.className = "dg-milestone-toast";
+  el.innerHTML = `<span class="dg-mt-icon">✦</span>
+    <div class="dg-mt-body">
+      <div class="dg-mt-title">${milestone.label}</div>
+      <div class="dg-mt-sub">${milestone.sub}</div>
+    </div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("dg-mt-in"));
+  setTimeout(() => {
+    el.classList.remove("dg-mt-in");
+    setTimeout(() => el.remove(), 400);
+  }, 4500);
+}
+
+function dgWeeklyProgress() {
+  const d   = state.discovery;
+  const done = Math.min(d.weekViewed || 0, DG_WEEKLY_GOAL);
+  const pct  = Math.round(done / DG_WEEKLY_GOAL * 100);
+  return { done, goal: DG_WEEKLY_GOAL, pct };
+}
+
+function dgHomeWidget() {
+  const d = state.discovery;
+  const { done, goal, pct } = dgWeeklyProgress();
+  const streak = d.streakDays || 0;
+  const todayIdx = dgDayIndex();
+  const activity = d.weekActivity || [0,0,0,0,0,0,0];
+  const maxAct = Math.max(...activity, 1);
+  const dayLabels = ["Pt","Sa","Ça","Pe","Cu","Ct","Pz"];
+  const label = done === 0 ? "Bu hafta keşfet" : "Bu hafta keşifler";
+  const streakHtml = streak >= 2
+    ? `<div class="dg-streak-pill"><span class="dg-streak-dot"></span>${streak} günlük seri</div>`
+    : done > 0
+      ? `<div class="dg-streak-pill dg-streak-dim">Seriyi sürdür →</div>`
+      : `<div class="dg-streak-pill dg-streak-dim">Bugün keşfet → seri başlat</div>`;
+  return `<div class="dg-widget" onclick="go('discover')">
+    <div class="dg-widget-main">
+      <div class="dg-widget-top">
+        <span class="dg-widget-label">${label}</span>
+        <span class="dg-widget-nums">${done}/${goal}</span>
+      </div>
+      <div class="dg-progress-track">
+        <div class="dg-progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="dg-widget-bottom">
+        ${streakHtml}
+        <span class="dg-widget-cta">Keşfe git →</span>
+      </div>
+    </div>
+    <div class="dg-mini-chart">
+      <div class="dg-day-bars">
+        ${activity.map((c, i) => `<div class="dg-day-bar${i === todayIdx ? " dg-today" : ""}" style="--dg-h:${Math.round(c / maxAct * 100)}%"></div>`).join("")}
+      </div>
+      <div class="dg-day-labels">
+        ${dayLabels.map((l, i) => `<span${i === todayIdx ? ' class="dg-lbl-today"' : ""}>${l}</span>`).join("")}
+      </div>
+    </div>
+  </div>`;
+}
+
+function dgDiscoverHeader() {
+  const { done, goal, pct } = dgWeeklyProgress();
+  if (done === 0) return "";
+  return `<div class="dg-dc-header">
+    <span class="dg-dc-label">Haftalık hedef</span>
+    <div class="dg-dc-bar-wrap">
+      <div class="dg-dc-bar-fill" style="width:${pct}%"></div>
+    </div>
+    <span class="dg-dc-nums">${done}/${goal}</span>
+  </div>`;
+}
+
 /* ─── BOOT ───────────────────────────────────────────────────────── */
 window.addEventListener("hashchange", render);
+window.addEventListener("offline", () => {
+  const app = document.getElementById("app");
+  if (app) app.innerHTML = `<section class="screen" style="display:flex;align-items:center;justify-content:center;min-height:100vh">${offlineState()}</section>`;
+});
+window.addEventListener("online", () => render());
 window.addEventListener("DOMContentLoaded", async () => {
   if (localStorage.getItem("mw_theme") === "light") document.body.classList.add("light-mode");
+  dgLoad();
+  dgCheckWeekReset();
   const onboardingDone = localStorage.getItem("mw_onboarding_done");
   if (window.MW?.Auth.isLoggedIn()) {
     await loadJobsFromAPI();
@@ -4476,8 +5430,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!location.hash || location.hash === "#onboarding-splash") location.hash = "auth";
   }
   render();
-  if ("serviceWorker" in navigator)
-    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+  window.MW?.Socket.connect();
+  initSocketListeners();
+  setTimeout(() => {
+    if (currentRoute() === "chat") window.MW?.Socket.joinMatch(getCallMatchId());
+  }, 500);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js", { updateViaCache:"none" })
+      .then(reg => reg.update())
+      .catch(() => {});
+  }
 });
 
 /* expose to inline onclick */
@@ -4485,6 +5447,8 @@ Object.assign(window, {
   go, render, openJob, swipeCard, undoSwipe, resetDeck,
   selectPin, toggleSheet, setMatchesTab, setMCTab, setDirMode,
   selectResult, setRating, sendMessage,
+  startChatCall, acceptIncomingCall, rejectIncomingCall, endChatCall,
+  toggleCallMute, toggleCallCamera,
   selectMapPin, deselectMapPin, setSheetState, cycleSheetState,
   setMapRouteMode, setMapTypeFilter, filterMapSearch, applyMapFilters,
   setSortMode, filterMapJobs, filterMapType, centerMapOnUser,
@@ -4492,6 +5456,8 @@ Object.assign(window, {
   toggleDarkMode, doLogout, saveProfile, removeSkill, addSkill,
   markAllRead, markNotifRead, toggleNotifPref,
   togglePrefType, setPrefRadius, filterSwipeDeck,
+  triggerHaptic, mlParticles, mlBounceNavIcon,
+  useStarterMessage, offlineState, interviewSuccessHtml, filterEmptyState,
   toggleSpeedMode, showLikeExplosion, showSwipeToast, updateDeckInfo,
   setDetailMode, commitDetailInterest,
   sendQuickReply, toggleChatAttach, shareLocation, shareDocument, shareProfile,
@@ -4506,4 +5472,6 @@ Object.assign(window, {
   updateObDistance, toggleObWorkType, updateObSalary,
   updateObAccountBtn, onOtpInput, onOtpKey,
   finishOnboarding, resetOnboarding,
+  dgHomeWidget, dgDiscoverHeader, dgEncouragementToast, dgMilestoneToast,
+  dgLoad, dgSave, dgRecordView, dgRecordSwipe, dgCheckMilestones,
 });

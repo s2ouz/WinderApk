@@ -163,6 +163,19 @@ const Socket = {
   typingStart(matchId) { _socket?.emit("typing:start", { matchId }); },
   typingStop(matchId)  { _socket?.emit("typing:stop",  { matchId }); },
 
+  startCall(payload)        { _socket?.emit("call:start", payload); },
+  acceptCall(matchId,answer){ _socket?.emit("call:accept", { matchId, answer }); },
+  sendIce(matchId,candidate){ _socket?.emit("call:ice", { matchId, candidate }); },
+  rejectCall(matchId,reason){ _socket?.emit("call:reject", { matchId, reason }); },
+  endCall(matchId)          { _socket?.emit("call:end", { matchId }); },
+
+  onIncomingCall(cb)   { _socket?.on("call:incoming",    cb); },
+  onCallAccepted(cb)   { _socket?.on("call:accepted",    cb); },
+  onCallIce(cb)        { _socket?.on("call:ice",         cb); },
+  onCallRejected(cb)   { _socket?.on("call:rejected",    cb); },
+  onCallEnded(cb)      { _socket?.on("call:ended",       cb); },
+  onCallUnavailable(cb){ _socket?.on("call:unavailable", cb); },
+
   off(event, cb) { _socket?.off(event, cb); },
   get connected() { return _socket?.connected || false; },
 };
