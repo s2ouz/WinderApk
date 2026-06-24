@@ -4,10 +4,9 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 /* ─── CONFIG ─────────────────────────────────────────────────────── */
-// Kendi Supabase projen bilgilerini gir:
-const SUPABASE_URL     = "https://mavdzfbfjljnyrtwgibl.supabase.co";
-const SUPABASE_ANON    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hdmR6ZmJmamxqbnlydHdnaWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMjI0MTYsImV4cCI6MjA5Nzg5ODQxNn0.XJcWu-eFvkY2PVjyvX_mKnnVB79UNJVvxE8LsAwFjTI";
-const SERVER_URL       = "http://localhost:4000";   // Node.js + Socket.io sunucusu
+const SUPABASE_URL = "https://mavdzfbfjljnyrtwgibl.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hdmR6ZmJmamxqbnlydHdnaWJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMjI0MTYsImV4cCI6MjA5Nzg5ODQxNn0.XJcWu-eFvkY2PVjyvX_mKnnVB79UNJVvxE8LsAwFjTI";
+const SERVER_URL   = "https://matchwork-server.onrender.com";
 
 /* ─── SUPABASE CLIENT ────────────────────────────────────────────── */
 let _supabase = null;
@@ -22,8 +21,8 @@ function getSupabase() {
 
 /* ─── TOKEN YÖNETIMI ─────────────────────────────────────────────── */
 const Auth = {
-  getToken()  { return localStorage.getItem("mw_token"); },
-  getRefresh(){ return localStorage.getItem("mw_refresh"); },
+  getToken()   { return localStorage.getItem("mw_token"); },
+  getRefresh() { return localStorage.getItem("mw_refresh"); },
   setSession(access, refresh) {
     localStorage.setItem("mw_token",   access);
     localStorage.setItem("mw_refresh", refresh);
@@ -48,11 +47,12 @@ async function api(method, path, body = null) {
   });
 
   if (res.status === 401) {
-    // Token süresi dolmuş → yenile
     const refreshed = await refreshToken();
     if (!refreshed) { Auth.clear(); window.location.hash = "auth"; return null; }
     headers["Authorization"] = `Bearer ${Auth.getToken()}`;
-    return fetch(`${SERVER_URL}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined }).then(r => r.json());
+    return fetch(`${SERVER_URL}${path}`, {
+      method, headers, body: body ? JSON.stringify(body) : undefined,
+    }).then(r => r.json());
   }
 
   return res.json();
@@ -88,8 +88,12 @@ const AuthAPI = {
     return data?.user_id ? { ok: true } : { ok: false, error: data?.error };
   },
 
-  logout() { Auth.clear(); },
-  isLoggedIn() { return Auth.isLoggedIn(); },
+  async getProfile() {
+    return api("GET", "/api/auth/profile");
+  },
+
+  logout()    { Auth.clear(); },
+  isLoggedIn(){ return Auth.isLoggedIn(); },
 };
 
 /* ─── JOBS ───────────────────────────────────────────────────────── */
@@ -103,11 +107,8 @@ const JobsAPI = {
     return api("GET", `/api/jobs?lat=${lat}&lng=${lng}&radius=${radius}`);
   },
 
-  async get(id) { return api("GET", `/api/jobs/${id}`); },
-
-  async swipe(id, direction) {
-    return api("POST", `/api/jobs/${id}/swipe`, { direction });
-  },
+  async get(id)              { return api("GET",  `/api/jobs/${id}`); },
+  async swipe(id, direction) { return api("POST", `/api/jobs/${id}/swipe`, { direction }); },
 };
 
 /* ─── MATCHES ────────────────────────────────────────────────────── */
@@ -116,16 +117,14 @@ const MatchesAPI = {
     const q = status ? `?status=${status}` : "";
     return api("GET", `/api/matches${q}`);
   },
-  async get(id)      { return api("GET",   `/api/matches/${id}`); },
-  async update(id,s) { return api("PATCH", `/api/matches/${id}`, { status: s }); },
+  async get(id)       { return api("GET",   `/api/matches/${id}`); },
+  async update(id, s) { return api("PATCH", `/api/matches/${id}`, { status: s }); },
 };
 
 /* ─── MESSAGES ───────────────────────────────────────────────────── */
 const MessagesAPI = {
-  async list(matchId) { return api("GET",  `/api/messages/${matchId}`); },
-  async send(matchId, content) {
-    return api("POST", `/api/messages/${matchId}`, { content });
-  },
+  async list(matchId)          { return api("GET",  `/api/messages/${matchId}`); },
+  async send(matchId, content) { return api("POST", `/api/messages/${matchId}`, { content }); },
 };
 
 /* ─── SOCKET.IO ──────────────────────────────────────────────────── */
@@ -144,30 +143,28 @@ const Socket = {
       if (token) _socket.emit("auth", { token });
     });
 
-    _socket.on("auth:ok",        (d)  => console.log("🔐 Socket auth OK:", d.userId));
-    _socket.on("connect_error",  (e)  => console.warn("Socket hatası:", e.message));
+    _socket.on("auth:ok",       d => console.log("🔐 Socket auth OK:", d.userId));
+    _socket.on("connect_error", e => console.warn("Socket hatası:", e.message));
     return _socket;
   },
 
   disconnect() { _socket?.disconnect(); _socket = null; },
 
-  joinMatch(matchId) { _socket?.emit("join:match", matchId); },
-
-  sendMessage(matchId, content) { _socket?.emit("message:send", { matchId, content }); },
+  joinMatch(matchId)           { _socket?.emit("join:match",     matchId); },
+  sendMessage(matchId, content){ _socket?.emit("message:send",   { matchId, content }); },
+  typingStart(matchId)         { _socket?.emit("typing:start",   { matchId }); },
+  typingStop(matchId)          { _socket?.emit("typing:stop",    { matchId }); },
 
   onMessage(cb)      { _socket?.on("message:new",      cb); },
   onTypingStart(cb)  { _socket?.on("typing:start",     cb); },
   onTypingStop(cb)   { _socket?.on("typing:stop",      cb); },
   onNotification(cb) { _socket?.on("notification:new", cb); },
 
-  typingStart(matchId) { _socket?.emit("typing:start", { matchId }); },
-  typingStop(matchId)  { _socket?.emit("typing:stop",  { matchId }); },
-
-  startCall(payload)        { _socket?.emit("call:start", payload); },
-  acceptCall(matchId,answer){ _socket?.emit("call:accept", { matchId, answer }); },
-  sendIce(matchId,candidate){ _socket?.emit("call:ice", { matchId, candidate }); },
-  rejectCall(matchId,reason){ _socket?.emit("call:reject", { matchId, reason }); },
-  endCall(matchId)          { _socket?.emit("call:end", { matchId }); },
+  startCall(payload)         { _socket?.emit("call:start",  payload); },
+  acceptCall(matchId, answer){ _socket?.emit("call:accept", { matchId, answer }); },
+  sendIce(matchId, candidate){ _socket?.emit("call:ice",    { matchId, candidate }); },
+  rejectCall(matchId, reason){ _socket?.emit("call:reject", { matchId, reason }); },
+  endCall(matchId)           { _socket?.emit("call:end",    { matchId }); },
 
   onIncomingCall(cb)   { _socket?.on("call:incoming",    cb); },
   onCallAccepted(cb)   { _socket?.on("call:accepted",    cb); },
@@ -177,7 +174,7 @@ const Socket = {
   onCallUnavailable(cb){ _socket?.on("call:unavailable", cb); },
 
   off(event, cb) { _socket?.off(event, cb); },
-  get connected() { return _socket?.connected || false; },
+  get connected(){ return _socket?.connected || false; },
 };
 
 /* ─── KONUM ──────────────────────────────────────────────────────── */
@@ -186,14 +183,14 @@ const Location = {
 
   async get() {
     if (this.current) return this.current;
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       if (!navigator.geolocation) {
-        this.current = { lat: 40.9906, lng: 29.0250 }; // Kadıköy fallback
+        this.current = { lat: 40.9906, lng: 29.0250 };
         resolve(this.current);
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
+        pos => {
           this.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
           resolve(this.current);
         },
