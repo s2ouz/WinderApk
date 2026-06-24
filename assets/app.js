@@ -5042,8 +5042,9 @@ async function loadMatchesList() {
   try {
     const data = await window.MW.MatchesAPI.list();
     if (Array.isArray(data)) {
+      const prevLen = state.matchesList.length;
       state.matchesList = data;
-      if (location.hash === "#messages") render();
+      if (data.length !== prevLen && location.hash === "#messages") render();
     }
   } catch(e) {}
 }
