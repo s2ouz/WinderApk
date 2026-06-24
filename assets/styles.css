@@ -4568,3 +4568,131 @@ body.light-mode .dg-milestone-toast { background: #fff; border-color: rgba(108,7
   80%      { transform:translateX(4px); }
 }
 .shake { animation:shake .4s ease-in-out; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE PWA ENHANCEMENTS
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ─── REAL DEVICE: Remove simulator chrome ──────────────────────── */
+/* On actual phones or installed PWA: no fake phone border/shadow   */
+@media (display-mode: standalone) {
+  .device-shell { display:block; background:var(--bg); width:100%; height:100%; }
+  .app-shell {
+    width:100vw; max-width:100vw;
+    height:100vh; max-height:100vh;
+    border-radius:0; box-shadow:none;
+  }
+}
+@media screen and (max-width:430px) {
+  .device-shell { display:block; background:var(--bg); width:100%; height:100%; }
+  .app-shell {
+    width:100vw; max-width:100vw;
+    height:100vh; max-height:100vh;
+    border-radius:0; box-shadow:none;
+  }
+}
+
+/* ─── SAFE AREA — TOPBAR ────────────────────────────────────────── */
+/* Standard topbar grows downward to sit below notch/Dynamic Island */
+.topbar {
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+  align-items: flex-end;
+  padding-bottom: 10px;
+}
+/* Discover has its own topbar with padding-based height */
+.dc-topbar {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+}
+/* Auth & register screens have no topbar */
+.auth-screen {
+  padding-top: max(32px, calc(env(safe-area-inset-top, 0px) + 20px));
+}
+/* Onboarding fullscreen overlay */
+.ob-screen {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ─── SAFE AREA — BOTTOM NAV ────────────────────────────────────── */
+/* Reinforce nav height to cover home bar fully                      */
+.bottom-nav {
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+}
+
+/* ─── PULL-TO-REFRESH INDICATOR ─────────────────────────────────── */
+.ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) translateY(-56px);
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1.5px solid var(--border-2);
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  z-index: 9999;
+  box-shadow: var(--el-3);
+  pointer-events: none;
+}
+.ptr-icon {
+  font-size: 16px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.ptr-indicator.ptr-refreshing .ptr-icon { font-size:0; }
+.ptr-indicator.ptr-refreshing::after {
+  content: "";
+  width: 18px; height: 18px;
+  border: 2.5px solid var(--border-2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: ptr-spin 0.7s linear infinite;
+}
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+
+/* ─── TAP FEEDBACK ──────────────────────────────────────────────── */
+/* Buttons scale down on press for physical feel                     */
+.btn:active:not([disabled]) {
+  transform: scale(0.95);
+  transition: transform 80ms;
+}
+.topbar-action:active {
+  transform: scale(0.88);
+  transition: transform 80ms;
+}
+.nav-item:active {
+  background: var(--surface-3);
+  transition: background 80ms;
+}
+/* Card-level press feedback */
+.settings-row:active,
+.job-row:active,
+.hero-card:active,
+.disc-card:active,
+.dist-card:active,
+.featured-card:active,
+.sheet-mini-card:active {
+  opacity: 0.75;
+  transform: scale(0.98);
+  transition: opacity 80ms, transform 80ms;
+}
+
+/* ─── SCROLL MOMENTUM ───────────────────────────────────────────── */
+.screen-body,
+.h-scroll,
+.ms-exp-list,
+.chat-messages,
+.nf-list,
+.ob-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ─── TOUCH TARGET MINIMUMS ─────────────────────────────────────── */
+/* Apple HIG: 44×44pt minimum touch target                          */
+.topbar-action { min-width:44px; min-height:44px; }
+.nav-item      { min-height:44px; }
+.btn           { min-height:44px; }
+.btn-sm        { min-height:36px; }

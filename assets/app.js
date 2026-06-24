@@ -4636,6 +4636,71 @@ const routes = {
   "settings-about":   renderSettingsAbout,
 };
 
+/* ─── PULL-TO-REFRESH ────────────────────────────────────────────── */
+let _ptrEl = null;
+
+function _getPTR() {
+  if (_ptrEl && document.body.contains(_ptrEl)) return _ptrEl;
+  _ptrEl = document.createElement("div");
+  _ptrEl.className = "ptr-indicator";
+  _ptrEl.innerHTML = '<span class="ptr-icon">↓</span>';
+  document.body.appendChild(_ptrEl);
+  return _ptrEl;
+}
+
+function initPullToRefresh(scrollEl, onRefresh) {
+  if (!scrollEl) return;
+  const THRESHOLD = 70;
+  let startY = 0, dist = 0, pulling = false;
+  const ind = _getPTR();
+  const ico = ind.querySelector(".ptr-icon");
+
+  function applyStyle(dy, refreshing) {
+    const pct = Math.min(dy / THRESHOLD, 1);
+    const ty  = Math.min(dy * 0.65, 90) - 56;
+    ind.style.opacity   = refreshing ? "1" : String(Math.min(pct, 1));
+    ind.style.transform = `translateX(-50%) translateY(${refreshing ? 28 : ty}px)`;
+    if (!refreshing && ico) {
+      ico.style.transform = `rotate(${Math.min(dy * 2.5, 360)}deg) scale(${0.6 + pct * 0.4})`;
+      ico.textContent = dy >= THRESHOLD ? "↑" : "↓";
+    }
+    ind.classList.toggle("ptr-refreshing", !!refreshing);
+  }
+
+  scrollEl.addEventListener("touchstart", e => {
+    if (scrollEl.scrollTop > 4) return;
+    startY = e.touches[0].clientY;
+    pulling = true;
+    dist = 0;
+  }, { passive: true });
+
+  scrollEl.addEventListener("touchmove", e => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) { pulling = false; return; }
+    dist = dy;
+    applyStyle(dy, false);
+  }, { passive: true });
+
+  scrollEl.addEventListener("touchend", () => {
+    if (!pulling) return;
+    pulling = false;
+    if (dist >= THRESHOLD) {
+      applyStyle(0, true);
+      onRefresh(() => {
+        ind.style.opacity = "0";
+        ind.style.transform = "translateX(-50%) translateY(-56px)";
+        ind.classList.remove("ptr-refreshing");
+        if (ico) ico.style.transform = "";
+      });
+    } else {
+      ind.style.opacity = "0";
+      ind.style.transform = "translateX(-50%) translateY(-56px)";
+    }
+    dist = 0;
+  });
+}
+
 /* ─── RENDER ─────────────────────────────────────────────────────── */
 function render() {
   const route = currentRoute();
@@ -4688,6 +4753,27 @@ function render() {
     _leafletMap = null;
     _leafletMarkers = {};
   }
+
+  // Pull-to-refresh: home, matches, messages, notifications
+  requestAnimationFrame(() => {
+    const scrollEl = document.querySelector(".screen-body");
+    if (!scrollEl) return;
+    if (route === "home") {
+      initPullToRefresh(scrollEl, done => {
+        loadJobsFromAPI().finally(() => { render(); done(); });
+      });
+    } else if (route === "matches") {
+      initPullToRefresh(scrollEl, done => {
+        loadMatchesList().finally(() => done());
+      });
+    } else if (route === "messages") {
+      initPullToRefresh(scrollEl, done => {
+        loadMatchesList().finally(() => done());
+      });
+    } else if (route === "notifications") {
+      initPullToRefresh(scrollEl, done => { render(); done(); });
+    }
+  });
 }
 
 /* ─── SWIPE ENGINE ───────────────────────────────────────────────── */
