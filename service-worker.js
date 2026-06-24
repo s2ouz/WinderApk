@@ -1,7 +1,6 @@
-const CACHE_NAME = "matchwork-pwa-v4";
+const CACHE_NAME = "matchwork-pwa-v5";
 const APP_SHELL = [
-  "./",
-  "./index.html",
+  "./app.html",
   "./manifest.webmanifest",
   "./assets/styles.css",
   "./assets/app.js",
@@ -31,7 +30,6 @@ self.addEventListener("fetch", event => {
   const isAppCode = url.origin === self.location.origin &&
     (event.request.mode === "navigate" || ["script", "style"].includes(event.request.destination));
 
-  // Uygulama kodunda önce ağı dene; böylece yeni JS/CSS eski PWA cache'ine takılmaz.
   if (isAppCode) {
     event.respondWith(
       fetch(event.request)
@@ -40,7 +38,7 @@ self.addEventListener("fetch", event => {
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
           return response;
         })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./app.html")))
     );
     return;
   }
